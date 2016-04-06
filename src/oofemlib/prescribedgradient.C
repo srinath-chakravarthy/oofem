@@ -85,6 +85,9 @@ double PrescribedGradient :: give(Dof *dof, ValueModeType mode, double time)
 
     ///@todo Use the user-specified dofs here instead:
     int pos = this->dofs.findFirstIndexOf(id);
+        if (!pos){
+      pos = 1;
+    }
     return u.at(pos);
 }
 
