@@ -161,7 +161,9 @@ namespace oofem {
     ENUM_ITEM_WITH_VALUE(IST_TensileStrength, 111) \
     ENUM_ITEM_WITH_VALUE(IST_ResidualTensileStrength, 112) \
     ENUM_ITEM_WITH_VALUE(IST_CrackIndex, 113) \
-    ENUM_ITEM_WITH_VALUE(IST_InterfaceNormal, 114)
+    ENUM_ITEM_WITH_VALUE(IST_InterfaceNormal, 114) \
+    ENUM_ITEM_WITH_VALUE(IST_StressGradient, 115) \
+    ENUM_ITEM_WITH_VALUE(IST_StGradient, 116) 
 
 
 /**

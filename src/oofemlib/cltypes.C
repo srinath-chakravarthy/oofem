@@ -191,6 +191,8 @@ InternalStateValueType giveInternalStateValueType(InternalStateType type)
     case IST_TensileStrength:
     case IST_ResidualTensileStrength:
     case IST_CrackIndex:
+    case IST_StressGradient:
+    case IST_StGradient:
         return ISVT_SCALAR;
 
     default:

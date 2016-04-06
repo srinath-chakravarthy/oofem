@@ -258,4 +258,10 @@ Material :: initMaterial(Element *element)
 {
     return 0;
 }
+
+void
+Material :: updateYourself(TimeStep *tStep)
+{
+  return;
+}
 } // end namespace oofem

@@ -212,6 +212,8 @@ set (sm_material
     Materials/graddpmaterialextensioninterface.C
     Materials/rcm2.C
     Materials/isodamagemodel.C
+    Materials/viscoplastic.C
+    Materials/viscoplasticnl.C
     )
 
 if (USE_PYTHON)

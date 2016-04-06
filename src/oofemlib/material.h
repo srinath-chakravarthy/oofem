@@ -308,6 +308,16 @@ public:
      * calls its initTempStatus method.
      */
     virtual void initTempStatus(GaussPoint *gp);
+        
+     /**
+     * Base method to instantiate some update
+     * For entire material 
+     * Such cases are rare but sometimes appear
+     * In the current set of material models, it is used only in the non-local viscoplastic model --> Stress gradient plasticity
+     */
+    virtual void updateYourself(TimeStep *tStep);
+    
+
 };
 } // end namespace oofem
 #endif // material_h

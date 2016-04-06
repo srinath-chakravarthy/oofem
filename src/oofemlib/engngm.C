@@ -41,6 +41,7 @@
 #include "engngm.h"
 #include "timestep.h"
 #include "metastep.h"
+#include "material.h"
 #include "element.h"
 #include "set.h"
 #include "load.h"
@@ -638,6 +639,9 @@ EngngModel :: updateYourself(TimeStep *tStep)
             }
 
             elem->updateYourself(tStep);
+	}
+	for ( auto &mat : domain->giveMaterials() ) {
+            mat->updateYourself(tStep);
         }
 
 #  ifdef VERBOSE
