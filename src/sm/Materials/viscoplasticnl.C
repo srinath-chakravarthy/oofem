@@ -86,12 +86,14 @@ ViscoPlasticNl :: computeXita(double &xita, GaussPoint *gp, TimeStep *tStep)
     this->buildNonlocalPointTable(gp);
     this->updateDomainBeforeNonlocAverage(tStep);
 
-    std :: list< localIntegrationRecord > *list = this->giveIPIntegrationList(gp);;
+    auto list = this->giveIPIntegrationList(gp);
+    std :: vector< localIntegrationRecord > :: iterator pos, postarget;
 
-    for ( auto &lir: *list ) {
-        nonlocStatus = static_cast< ViscoPlasticNlStatus * >( this->giveStatus(lir.nearGp) );
+
+    for (  pos = list->begin(); pos != list->end(); ++pos ) {
+        nonlocStatus = static_cast< ViscoPlasticNlStatus * >( this->giveStatus(pos->nearGp) );
         nonlocalContribution = nonlocStatus->giveLocalXitaForAverage();
-        nonlocalContribution *= lir.weight;
+        nonlocalContribution *= pos->weight;
         nonlocalXita += nonlocalContribution;
     }
     /// nonlocalXita contains now the average stress gradient 
