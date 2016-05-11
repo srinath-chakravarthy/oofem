@@ -1033,6 +1033,7 @@ void EngngModel :: assembleVectorFromBC(FloatArray &answer, TimeStep *tStep,
                 const IntArray &elements = set->giveElementList();
                 for ( int ielem = 1; ielem <= elements.giveSize(); ++ielem ) {
                     Element *element = domain->giveElement( elements.at(ielem) );
+                    if ( !element->isActivated(tStep) ) continue;
                     charVec.clear();
                     va.vectorFromLoad(charVec, *element, bodyLoad, tStep, mode);
 
@@ -1053,6 +1054,7 @@ void EngngModel :: assembleVectorFromBC(FloatArray &answer, TimeStep *tStep,
                 const IntArray &boundaries = set->giveBoundaryList();
                 for ( int ibnd = 1; ibnd <= boundaries.giveSize() / 2; ++ibnd ) {
                     Element *element = domain->giveElement( boundaries.at(ibnd * 2 - 1) );
+                    if ( !element->isActivated(tStep) ) continue;
                     int boundary = boundaries.at(ibnd * 2);
                     charVec.clear();
                     va.vectorFromBoundaryLoad(charVec, *element, bLoad, boundary, tStep, mode);
@@ -1075,6 +1077,7 @@ void EngngModel :: assembleVectorFromBC(FloatArray &answer, TimeStep *tStep,
                 const IntArray &edgeBoundaries = set->giveEdgeList();
                 for ( int ibnd = 1; ibnd <= edgeBoundaries.giveSize() / 2; ++ibnd ) {
                     Element *element = domain->giveElement( edgeBoundaries.at(ibnd * 2 - 1) );
+                    if ( !element->isActivated(tStep) ) continue;
                     int boundary = edgeBoundaries.at(ibnd * 2);
                     charVec.clear();
                     va.vectorFromEdgeLoad(charVec, *element, bLoad, boundary, tStep, mode);
