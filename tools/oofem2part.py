@@ -29,6 +29,15 @@
 #     Some adjustment of created parallel input files may be necessary,
 #     typically the solver has to be changed into parallel one.
 #
+# Note : Hack Srinath Chakravarthy 04/07/2016
+# Currently this does not generate null nodes to perform averging of non-local pa
+#   Addition for non-local models
+#       1) Add all nodes to each partition file and any node not in 
+#          the current partition will be marked NULL
+#       2) Adds all elements to each partition file and every element not 
+#           in the current partition will be marked remote
+#      All elements and nodes are added because it is not easy to determine 
+#       which elements are within non-local radius 
 
 import sys
 import re
@@ -42,6 +51,7 @@ debug = 0
 UNDEF = 0
 LOCAL = 1
 SHARED= 2
+NULL = 3
 
 
 #----do not change------
@@ -49,11 +59,14 @@ SHARED= 2
 nparts = 0
 # input File Name 
 inputFileName = ''
+# nonlocal
+nonlocal = 0 #defaults to local partitioning
 
 def print_usage():
     print "\nUsage:\noofem2part -f file -n #"
     print "where -f file sets path to input oofem (serial) file to be partitioned"
     print "      -n #    allows to se the required number of target partitions"
+    print " -l # allows non-local model additions l=0 local l/=0 non-local"
 
 
 # returns the value corresponding to given keyword and record
@@ -254,31 +267,64 @@ def writePartition (i, part_vert, nodalstatuses, nodalpartitions):
             nshd = nshd+1
 
     # write component record
-    pfile.write("ndofman "+str(nloc+nshd) + ' nelem '+str( part_vert.count(i)) + ' ncrosssect '+str(ncs)+' nmat '+str(nmat)+' nbc '+str(nbc)+' nic '+str(nic)+' nltf '+str(nltf)+'\n')
+    if (nonlocal==0):
+        pfile.write("ndofman "+str(nloc+nshd) + ' nelem '+str( part_vert.count(i)) + ' ncrosssect '+str(ncs)+' nmat '+str(nmat)+' nbc '+str(nbc)+' nic '+str(nic)+' nltf '+str(nltf)+'\n')
+    else:
+        pfile.write("ndofman "+str(ndofman) + ' nelem '+str(nelem) + ' ncrosssect '+str(ncs)+' nmat '+str(nmat)+' nbc '+str(nbc)+' nic '+str(nic)+' nltf '+str(nltf)+'\n')
+    
     # write local nodes first
     nloc = 0
+    nshared = 0
+    nnull = 0
     for j in range(ndofman):
         if ((nodalstatuses[j]==LOCAL) and (i in nodalpartitions[j])):
             pfile.write(nodes[j])
             nloc = nloc+1
-    # write shared nodes
-    nshared = 0
-    for j in range(ndofman):
-        if ((nodalstatuses[j]==SHARED) and (i in nodalpartitions[j])):
+        elif ((nodalstatuses[j]==SHARED) and (i in nodalpartitions[j])):
             nshared = nshared+1
             rec = nodes[j].rstrip('\r\n')+' shared partitions '+str(len(nodalpartitions[j]))
             for k in nodalpartitions[j]: rec=rec+' '+str(k)
             pfile.write(rec+'\n')
-    # write element records
+        else:
+            if (nonlocal!=0):
+                nnull = nnull+1
+                #rec = re.sub("bc.*$","",nodes[j].rstrip('\r\n'))+' Null'
+                rec = nodes[j].rstrip('\r\n')+' null'
+                pfile.write(rec+'\n')
+                
+#    # write shared nodes
+#    nshared = 0
+#    for j in range(ndofman):
+#        if ((nodalstatuses[j]==SHARED) and (i in nodalpartitions[j])):
+#            nshared = nshared+1
+#            rec = nodes[j].rstrip('\r\n')+' shared partitions '+str(len(nodalpartitions[j]))
+#            for k in nodalpartitions[j]: rec=rec+' '+str(k)
+#            pfile.write(rec+'\n')
+#    # write NULL nodes
+#    nnull = 0
+#    if (nonlocal!=0):
+#        for j in range(ndofman):
+#            if (i not in nodalpartitions[j]):
+#                nnull = nnull+1
+#                rec = re.sub("bc.*$","",nodes[j].rstrip('\r\n'))+' Null'
+#                #rec = nodes[j].rstrip('\r\n')+' null'
+#                pfile.write(rec+'\n')
+#    # write local element records
     for j in range(nelem):
-        if (part_vert[j] == i): pfile.write(elements[j])
+        if (part_vert[j] == i): 
+            pfile.write(elements[j])
+        else:
+            if (nonlocal!=0):
+                rec = elements[j].rstrip('\r\n') + ' remote partitions 1 ' + str(part_vert[j])
+                pfile.write(rec+'\n')
+        
     # write the bottom part
     for j in bottom:
         pfile.write(j)
     pfile.close()
     
     #print some stats
-    print '{0:>9d} {1:>12d} {2:>12d} {3:>10d}'.format(i, nloc, nshared, part_vert.count(i))
+    print '{0:>9d} {1:>12d} {2:>12d} {3:>12d} {4:>10d}'.format(i, nloc, nshared, nnull, part_vert.count(i))
 
 
 def parseInput(infile):
@@ -371,12 +417,14 @@ def parseInput(infile):
 #
 #
 # parse command line 
-options, remainder = getopt.getopt(sys.argv[1:], 'f:n:h', ['input=', 'np=', 'help'])
+options, remainder = getopt.getopt(sys.argv[1:], 'f:n:l:h', ['input=', 'np=', 'nonlocal=','help'])
 for opt, arg in options:
     if opt in ('-f', '--input'):
         inputFileName = arg
     elif opt in ('-n', '--np'):
         nparts = int(arg)
+    elif opt in ('-l', '--nonlocal'):
+        nonlocal = int(arg)        
     elif opt in ('-h', '--help'):
         print_usage()
         exit(1)

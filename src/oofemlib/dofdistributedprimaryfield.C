@@ -44,7 +44,7 @@
 #include "initialcondition.h"
 #include "element.h"
 #include "activebc.h"
-
+#include "logger.h"
 
 namespace oofem {
 DofDistributedPrimaryField :: DofDistributedPrimaryField(EngngModel *a, int idomain,
@@ -268,14 +268,18 @@ void
 DofDistributedPrimaryField :: applyBoundaryCondition(TimeStep *tStep)
 {
     Domain *d = emodel->giveDomain(domainIndx);
+    int knode = 0;
     for ( auto &dman : d->giveDofManagers() ) {
         for ( auto &dof : *dman ) {
             if ( dof->hasBc(tStep) && dof->isPrimaryDof() ) {
                 int bcid = dof->giveBcId();
+		//OOFEM_LOG_FORCED("Applied BC on distributed field (%d %d %d)\n", bcid, dof->giveDofManNumber(), dof->giveDofManGlobalNumber());
                 double val = static_cast< BoundaryCondition* >(d->giveBc(bcid))->give(dof, VM_Total, tStep->giveTargetTime());
                 dof->updateUnknownsDictionary(tStep, VM_Total, val);
             }
         }
+	knode++;
+
     }
 
     for ( auto &bc : d->giveBcs() ) {
