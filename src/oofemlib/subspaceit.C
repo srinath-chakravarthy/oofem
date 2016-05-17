@@ -101,15 +101,6 @@ SubspaceIteration :: solve(SparseMtrx &a, SparseMtrx &b, FloatArray &_eigv, Floa
     vec.resize(nc, nc);
     vec.zero();                   // eigen vectors of reduced problem
 
-    FloatMatrix tmp;
-    a.toFloatMatrix(tmp);
-    tmp.writeCSV("tmp.txt");
-    b.toFloatMatrix(tmp);
-    tmp.writeCSV("tmpb.txt");
-
-    _r.resize(nn, nroot);
-    _eigv.resize(nroot);
-
     //
     // create work arrays
     //
@@ -361,7 +352,7 @@ SubspaceIteration :: solve(SparseMtrx &a, SparseMtrx &b, FloatArray &_eigv, Floa
             }
         }
 
-        OOFEM_LOG_INFO("SubspaceIteration :: solveYourselfAt: Convergence reached for RTOL=%20.15f", rtol);
+        OOFEM_LOG_INFO("SubspaceIteration :: solveYourselfAt: Convergence reached for RTOL=%20.15f\n", rtol);
         break;
 label400:
         if ( nite >= nitem ) {
@@ -385,6 +376,9 @@ label400:
 
     // one cad add a normalization of eigen-vectors here
 
+    // initialize original index locations
+    _r.resize(nn, nroot);
+    _eigv.resize(nroot);
     for ( int i = 1; i <= nroot; i++ ) {
         _eigv.at(i) = eigv.at(i);
         for ( int j = 1; j <= nn; j++ ) {
