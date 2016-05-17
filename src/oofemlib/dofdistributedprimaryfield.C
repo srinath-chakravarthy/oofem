@@ -136,6 +136,7 @@ DofDistributedPrimaryField :: update(ValueModeType mode, TimeStep *tStep, const 
     Domain *d = emodel->giveDomain(domainIndx);
 
     for ( auto &node : d->giveDofManagers() ) {
+      if ((node->isNull())) continue;
         for ( Dof *dof: *node ) {
             if ( !dof->isPrimaryDof() ) continue;
             int eqNum = dof->giveEquationNumber(s);
@@ -268,8 +269,9 @@ void
 DofDistributedPrimaryField :: applyBoundaryCondition(TimeStep *tStep)
 {
     Domain *d = emodel->giveDomain(domainIndx);
-    int knode = 0;
+    //int knode = 0;
     for ( auto &dman : d->giveDofManagers() ) {
+      if (dman->isNull()) continue;
         for ( auto &dof : *dman ) {
             if ( dof->hasBc(tStep) && dof->isPrimaryDof() ) {
                 int bcid = dof->giveBcId();
@@ -278,8 +280,7 @@ DofDistributedPrimaryField :: applyBoundaryCondition(TimeStep *tStep)
                 dof->updateUnknownsDictionary(tStep, VM_Total, val);
             }
         }
-	knode++;
-
+	//knode++;
     }
 
     for ( auto &bc : d->giveBcs() ) {
