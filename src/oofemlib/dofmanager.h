@@ -542,6 +542,13 @@ public:
             return false;
         }
     }
+    bool isNull() {
+      if (parallel_mode  == DofManager_null) {
+	return true;
+      } else {
+	return false;
+      }
+    }
 };
 } // end namespace oofem
 #endif // dofmanager_h
