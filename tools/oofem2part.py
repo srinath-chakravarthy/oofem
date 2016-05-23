@@ -1,48 +1,55 @@
 #!/usr/bin/python
-#
-# oofem2part.py       (c) 2013 Borek Patzak, www.oofem.org
-#
-# Description
-#    
-#     oofem2part reads serial oofem input file and performs 
-#     the node-cut partitioning of the problem domain 
-#     into a set of subdomains (using metis),
-#     automatically identifying shared nodes.
-#     On output, it produces a set of oofem input files for each 
-#     subproblem, suitable for parallel oofem analysis.
-#
-# Dependencies
-#
-#     oofem2part requires "Metis to python" wrapper module
-#     (see http://metis.readthedocs.org/en/latest/)
-#     the METIS_DLL environment variable should point to 
-#     Metis shared library location.
-#
-# Usage
-#
-#     oofem2part -f file -n #
-#     where -f option allows to set path to oofem input input file, 
-#           -n option sets the number of desired target partitions
-#
-# Note
-#
-#     Some adjustment of created parallel input files may be necessary,
-#     typically the solver has to be changed into parallel one.
-#
-# Note : Hack Srinath Chakravarthy 04/07/2016
-# Currently this does not generate null nodes to perform averging of non-local pa
-#   Addition for non-local models
-#       1) Add all nodes to each partition file and any node not in 
-#          the current partition will be marked NULL
-#       2) Adds all elements to each partition file and every element not 
-#           in the current partition will be marked remote
-#      All elements and nodes are added because it is not easy to determine 
-#       which elements are within non-local radius 
+"""
+ oofem2part.py       (c) 2013 Borek Patzak, www.oofem.org
 
+ Description
+    
+     oofem2part reads serial oofem input file and performs 
+     the node-cut partitioning of the problem domain 
+     into a set of subdomains (using metis),
+     automatically identifying shared nodes.
+     On output, it produces a set of oofem input files for each 
+     subproblem, suitable for parallel oofem analysis.
+
+ Dependencies
+
+     oofem2part requires "Metis to python" wrapper module
+     (see http://metis.readthedocs.org/en/latest/)
+     the METIS_DLL environment variable should point to 
+     Metis shared library location.
+
+ Usage
+
+     oofem2part -f file -n #
+     where -f option allows to set path to oofem input input file, 
+           -n option sets the number of desired target partitions
+
+ Note
+
+     Some adjustment of created parallel input files may be necessary,
+     typically the solver has to be changed into parallel one.
+
+ Note : Hack Srinath Chakravarthy 04/07/2016
+ Currently this does not generate null nodes to perform averging of non-local pa
+   Addition for non-local models
+       1) Add all nodes to each partition file and any node not in 
+          the current partition will be marked NULL
+       2) Adds all elements to each partition file and every element not 
+           in the current partition will be marked remote
+      All elements and nodes are added because it is not easy to determine 
+       which elements are within non-local radius 
+  Trial to determine shared nodes 
+      These are nodes not in the partition but less than nl radius away
+      These will be marked as remote with partitions parameter
+      First task is to obtain the non-local radius 
+         Need to make it more general, but for now it is restricted to 
+         viscoplasticnl
+"""
 import sys
 import re
 from sets import Set
 import getopt
+import math
 
 #debug flag
 debug = 0
@@ -276,6 +283,21 @@ def writePartition (i, part_vert, nodalstatuses, nodalpartitions):
     nloc = 0
     nshared = 0
     nnull = 0
+    
+#    coords = np.zeros((dofman,4))
+#    m_coords = re.compile('coords\s*\d+\s*([-+]?\d*\.?\d*(?:[eE]?[-+]?\d+)?)\s*([-+]?\d*\.?\d*(?:[eE]?[-+]?\d+)?)\s*([-+]?\d*\.?\d*(?:[eE]?[-+]?\d+)?)')
+
+#==============================================================================
+# #   Create nodal Coordinates array    
+#     for j in range(ndofman):
+#         coordsr = re.findall(m_coords,nodes[j])
+#         coords[j,0] = float(coordsr[0][0])
+#         coords[j,1] = float(coordsr[0][1])
+#         coords[j,2] = float(coordsr[0][2])
+#         coords[j,3] = coords[j,0]**2 + coords[j,1]**2 + coords[j,2]**2
+# 
+#==============================================================================
+# For now make every node a remote node
     for j in range(ndofman):
         if ((nodalstatuses[j]==LOCAL) and (i in nodalpartitions[j])):
             pfile.write(nodes[j])
@@ -289,7 +311,11 @@ def writePartition (i, part_vert, nodalstatuses, nodalpartitions):
             if (nonlocal!=0):
                 nnull = nnull+1
                 #rec = re.sub("bc.*$","",nodes[j].rstrip('\r\n'))+' Null'
-                rec = nodes[j].rstrip('\r\n')+' null'
+#                if (i == 0):
+#                    print i, len(nodalpartitions[j])
+                rec = nodes[j].rstrip('\r\n')+' null'    
+#                rec = nodes[j].rstrip('\r\n')+' remote partitions ' + str(len(nodalpartitions[j]))
+#                for k in nodalpartitions[j]: rec=rec+' '+str(k)
                 pfile.write(rec+'\n')
                 
 #    # write shared nodes
@@ -332,6 +358,7 @@ def parseInput(infile):
     global ndofman, nelem, ncs, nmat, nbc, nic, nltf
     global nodes, nodemap, elements, elemmap, elemnodes, nodalconnectivity
     global nodemap
+    global nonlocalradius
     # loop over input file lines
     # first read first 5 lines (output file, description, emodel, domain, output manager) and store them in header list
     header = []
@@ -407,10 +434,22 @@ def parseInput(infile):
 
     # store remaining records into bottom buffer (they will be replicated in every subdomain)
     bottom=[]
+    ncsrec=[]
+    nmatrec=[]
     for i in range (ncs+nmat+nbc+nic+nltf):
-        bottom.append(readRecord(infile))
+        rec = readRecord(infile)
+        match = re.search('viscoplasticnl',rec,re.IGNORECASE)
+        if (match):
+            rad = re.findall('(r.\d*\.*\d+)',rec)
+            if (rad):
+                r1 = rad[0].split()[1]
+                nonlocalradius = float(r1)
+                print 'Non local material found with radius = ', nonlocalradius
+            else:
+                print 'Cannot assign non-local radius'
+        bottom.append(rec)
 
-
+    print nmatrec
 #
 #
 # ---------------------------begin here----------------------------
