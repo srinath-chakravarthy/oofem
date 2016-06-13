@@ -41,10 +41,29 @@
 #include "sparsemtrxtype.h"
 #include "staggeredsolver.h"
 
+#include <list>
+
 #define _IFT_StaticStructural_Name "staticstructural"
 #define _IFT_StaticStructural_deltat "deltat"
 #define _IFT_StaticStructural_solvertype "solvertype"
 #define _IFT_StaticStructural_nonlocalExtension "nonlocalext"
+
+/**
+ * Adaptive Time Stepping 
+ * @author Srinath Chakravarthy (Northeastern University) 
+ * optional parameters 
+ * @par deltat_min -> Minimum deltaT allowed in this solution step
+ * @par deltat_max -> Maxmimum deltaT allowed in this solution step
+ * Method works based on including new solver parameters
+ * Files changed 
+ * 1) nrsolver.h and nrsolver.C
+ * 2) nmstatus.h ---> new nrsolver parameters added
+ * @todo synchronize number of solution steps to time 
+ * Will not work for parallel solvers because time step in not synced between parallel domains
+ * @todo synchronize deltaT between parallel domains ---> non-trivial
+ */ 
+#define _IFT_StaticStructural_deltat_min "deltat_min"
+#define _IFT_StaticStructural_deltat_max "deltat_max"
 
 #define _IFT_StaticStructural_recomputeaftercrackpropagation "recomputeaftercrackprop"
 namespace oofem {
@@ -71,9 +90,17 @@ protected:
     
     double deltaT;
 
+    double deltaT_min, deltaT_max; ///< Max, min and starting deltaT
+    
+    bool adaptiveTime; ///< Flag to indicate adaptive time stepping is in use
+    
     InitialGuess initialGuessType;
 
     bool mRecomputeStepAfterPropagation;
+    
+    bool converged; ///< Check for convergence of numerical method
+    
+    std :: list<bool>prevNSolStatus; /// < Queue containing previous n=5 converged values
 
 public:
     StaticStructural(int i, EngngModel * _master = NULL);
@@ -113,6 +140,8 @@ public:
     virtual contextIOResultType restoreContext(DataStream *stream, ContextMode mode, void *obj = NULL);
     
     virtual int estimateMaxPackSize(IntArray &commMap, DataStream &buff, int packUnpackType);
+    
+    bool proceedStep(TimeStep *tStep);
 };
 } // end namespace oofem
 #endif // staticstructural_h

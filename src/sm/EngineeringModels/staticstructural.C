@@ -69,6 +69,9 @@ StaticStructural :: StaticStructural(int i, EngngModel *_master) : StructuralEng
     ndomains = 1;
     solverType = 0;
     mRecomputeStepAfterPropagation = false;
+    deltaT_min = 0.0;
+    deltaT_max = 1.0e30;
+    adaptiveTime = false;
 }
 
 
@@ -129,7 +132,24 @@ StaticStructural :: initializeFrom(InputRecord *ir)
     this->initialGuessType = ( InitialGuess ) _val;
     
     mRecomputeStepAfterPropagation = ir->hasField(_IFT_StaticStructural_recomputeaftercrackpropagation);
-
+    
+    IR_GIVE_OPTIONAL_FIELD(ir, deltaT_min, _IFT_StaticStructural_deltat_min); 
+    if (deltaT_min < 0.0) {
+      deltaT_min = deltaT - 1.e-10;
+      OOFEM_LOG_INFO("Minimum DeltaT is less than zero, setting equal to deltaT");
+    } else if (deltaT_min  > deltaT) {
+      deltaT_min = deltaT - 1.e-10;
+      OOFEM_LOG_INFO("Minimum DeltaT is greater than deltaT, setting equal to deltaT");
+    }
+    
+    IR_GIVE_OPTIONAL_FIELD(ir, deltaT_max, _IFT_StaticStructural_deltat_max);
+    if (deltaT_max < deltaT ) {
+      deltaT_max = deltaT;
+      OOFEM_LOG_INFO("Maximum DeltaT is less than deltaT, setting equal to deltaT");
+    }
+    
+    adaptiveTime = ir->hasField(_IFT_StaticStructural_deltat_min);
+    
 #ifdef __PARALLEL_MODE
     ///@todo Where is the best place to create these?
     if ( isParallel() ) {
@@ -191,16 +211,80 @@ void StaticStructural :: solveYourself()
 }
 
 
-void StaticStructural :: solveYourselfAt(TimeStep *tStep)
+void StaticStructural :: solveYourselfAt(TimeStep* tStep)
 {
+    if (adaptiveTime) {
+      this->converged = false;
+      do {
+        /// Solve the problem 
+        this->converged = this->proceedStep(tStep);
+        /// Checking for convergence
+        if (!this->converged){ 
+          /// If solution is not converged
+
+          /// Push values into queue for bookkeeping solution status
+          if (prevNSolStatus.size() < 5) {
+            prevNSolStatus.push_back(false);
+          } else {
+            prevNSolStatus.pop_front();
+            prevNSolStatus.push_back(false);
+          }
+          /// Decrease deltaT and set deltaT to half its value
+          if (deltaT/2.0 <= deltaT_min) {
+            OOFEM_ERROR("Solution to problem not possible with minimum time step of %.3e \n", deltaT_min)
+          }
+          OOFEM_LOG_INFO("Decreasing deltaT from %.3e to %.3e \n", deltaT, std :: max(deltaT/2.0, deltaT_min));
+          this->deltaT /= 2.0;
+          
+          double prevtargetTime = previousStep->giveTargetTime();
+          double prevdt = previousStep->giveTimeIncrement();
+          double prevIntrinsicTime = previousStep->giveIntrinsicTime();
+          tStep->setIntrinsicTime(prevIntrinsicTime + this->deltaT);
+          tStep->setTargetTime(prevtargetTime + this->deltaT);
+          tStep->setTimeIncrement(this->deltaT);
+
+          //currentStep.reset( new TimeStep(*previousStep, this->deltaT) );
+        }
+//      /// Increase deltaT if 5 previous steps are all converged
+        else { 
+          if (prevNSolStatus.size() < 5) {
+            prevNSolStatus.push_back(true);
+          } else
+          {
+            prevNSolStatus.pop_front();
+            prevNSolStatus.push_back(true);
+            /// Increase deltaT by 1.1 if the previous 5 steps have all converged
+            int solacc = std :: accumulate(prevNSolStatus.begin(), prevNSolStatus.end(), 0);
+            if (solacc == 5) {
+              OOFEM_LOG_INFO("Incrementing deltaT from %.3e by 1.1 to %.3e \n", deltaT, std :: min (deltaT*1.1, deltaT_max));
+              deltaT *= 1.1;
+            }
+            if (deltaT >= deltaT_max)  deltaT = deltaT_max;
+          }
+        }       
+      } while(!this->converged && deltaT > deltaT_min);
+
+    }
+    else{
+      this->converged = this->proceedStep(tStep);
+      
+      if (!this->converged) {
+        OOFEM_LOG_ERROR("Problem cannot be solved");
+      }
+    }
+    
+}
+bool StaticStructural::proceedStep(TimeStep* tStep)
+{
+    bool convergedsolve;
     int neq;
     int di = 1;
-
+    convergedsolve = false;
     this->field->advanceSolution(tStep);
     this->field->applyBoundaryCondition(tStep); ///@todo Temporary hack, advanceSolution should apply the boundary conditions directly.
 
     neq = this->giveNumberOfDomainEquations( di, EModelDefaultEquationNumbering() );
-    if ( tStep->giveNumber() == 1 ) {
+    if (tStep->giveNumber()==1) {
         this->field->initialize(VM_Total, tStep, this->solution, EModelDefaultEquationNumbering() );
     } else {
         this->field->initialize(VM_Total, tStep->givePreviousStep(), this->solution, EModelDefaultEquationNumbering() );
@@ -290,9 +374,15 @@ void StaticStructural :: solveYourselfAt(TimeStep *tStep)
                                             currentIterations,
                                             tStep);
     if ( !( status & NM_Success ) ) {
-        OOFEM_ERROR("No success in solving problem");
+        convergedsolve = false;
+        OOFEM_LOG_INFO("No success in solving problem");
     }
+    else {
+      convergedsolve = true;
+    }
+  return convergedsolve;
 }
+
 
 void StaticStructural :: terminate(TimeStep *tStep)
 {
@@ -351,7 +441,7 @@ contextIOResultType StaticStructural :: saveContext(DataStream *stream, ContextM
     contextIOResultType iores;
     int closeFlag = 0;
     FILE *file = NULL;
-
+    
     if ( stream == NULL ) {
         if ( !this->giveContextFile(& file, this->giveCurrentStep()->giveNumber(),
                                     this->giveCurrentStep()->giveVersion(), contextMode_write) ) {

@@ -73,6 +73,7 @@ NRSolver :: NRSolver(Domain *d, EngngModel *m) :
     //
     nsmax = 60;     // default maximum number of sweeps allowed
     deltaL = 1.0;
+    solved = 0;
     NR_Mode = NR_OldMode = nrsolverModifiedNRM;
     NR_ModeTick = -1; // do not switch to calm_NR_OldMode
     MANRMSteps = 0;
@@ -285,7 +286,8 @@ NRSolver :: solve(SparseMtrx &k, FloatArray &R, FloatArray *R0, FloatArray *iR,
         } else if ( converged && ( nite >= minIterations ) ) {
             status |= NM_Success;
             break;
-        } else if ( nite >= nsmax ) {
+        } else if ( nite >= nsmax-1 ) {
+            status = NM_Maxiter;
             OOFEM_LOG_DEBUG("Maximum number of iterations reached\n");
             break;
         }
@@ -347,6 +349,7 @@ NRSolver :: solve(SparseMtrx &k, FloatArray &R, FloatArray *R0, FloatArray *iR,
 
         engngModel->giveExportModuleManager()->doOutput(tStep, true);
     }
+    solved = 1;
 
     // Modify Load vector to include "quasi reaction"
     if ( R0 ) {

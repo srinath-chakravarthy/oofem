@@ -48,5 +48,6 @@ typedef unsigned long NM_Status;
 #define NM_NoSuccess    ( 1L << 2 ) ///< Numerical method failed to solve problem.
 #define NM_KeepTangent  ( 1L << 3 ) ///< Don't assemble new tangent, but use previous.
 #define NM_ForceRestart ( 1L << 4 )
+#define NM_Maxiter      ( 1L << 5 ) ///< Method has reached max iterations
 } // end namespace oofem
 #endif // nmstatus_h
