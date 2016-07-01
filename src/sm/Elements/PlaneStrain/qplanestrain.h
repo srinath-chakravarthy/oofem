@@ -62,7 +62,7 @@ public:
     virtual const char *giveInputRecordName() const { return _IFT_QPlaneStrain_Name; }
     virtual const char *giveClassName() const { return "QPlaneStrain"; }
 
-    virtual int testElementExtension(ElementExtension ext) { return 0; } ///@todo //check this probably ok now when derived from PE-element
+    //virtual int testElementExtension(ElementExtension ext) { return 0; } ///@todo //check this probably ok now when derived from PE-element
 
     virtual Interface *giveInterface(InterfaceType it);
 
