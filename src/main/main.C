@@ -265,7 +265,7 @@ int main(int argc, char *argv[])
 
     if ( restartFlag ) {
         try {
-            problem->restoreContext(NULL, CM_State | CM_Definition, ( void * ) restartStepInfo);
+            problem->restoreContext(NULL, CM_State, ( void * ) restartStepInfo);
         } catch(ContextIOERR & c) {
             c.print();
             exit(1);
@@ -273,7 +273,7 @@ int main(int argc, char *argv[])
         problem->initStepIncrements();
     } else if ( adaptiveRestartFlag ) {
         problem->initializeAdaptive(adaptiveRestartFlag);
-        problem->saveContext(NULL, CM_State | CM_Definition);
+        problem->saveContext(NULL, CM_State);
         // exit (1);
     }
 
@@ -365,10 +365,10 @@ void oofem_finalize_modules()
 void oofem_debug(EngngModel *emodel)
 {
     //FloatMatrix k;
-    //((BsplinePlaneStressElement*)emodel.giveDomain(1)->giveElement(1))->giveCharacteristicMatrix(k, TangentStiffnessMatrix, NULL);
+    //((BsplinePlaneStressElement*)emodel->giveDomain(1)->giveElement(1))->giveCharacteristicMatrix(k, StiffnessMatrix, NULL);
 
 #ifdef __PARALLEL_MODE
-    //LoadBalancer* lb = emodel.giveDomain(1)->giveLoadBalancer();
+    //LoadBalancer* lb = emodel->giveDomain(1)->giveLoadBalancer();
     //lb->calculateLoadTransfer();
     //lb->migrateLoad();
     //exit(1);

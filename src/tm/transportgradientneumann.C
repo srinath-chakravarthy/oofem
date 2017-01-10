@@ -84,7 +84,7 @@ IRResultType TransportGradientNeumann :: initializeFrom(InputRecord *ir)
     this->mCenterCoord.clear();
     IR_GIVE_OPTIONAL_FIELD(ir, mCenterCoord, _IFT_TransportGradientNeumann_centerCoords)
     
-    this->usePhi = ir->hasField(_IFT_TransportGradientNeumann_usePhi);
+    this->dispControl = ir->hasField(_IFT_TransportGradientNeumann_dispControl);
     
     return ActiveBoundaryCondition :: initializeFrom(ir);
 }
@@ -102,7 +102,7 @@ void TransportGradientNeumann :: postInitialize()
 {
     ActiveBoundaryCondition :: postInitialize();
     
-    if ( this->usePhi ) this->computePhi();
+    if ( this->dispControl ) this->computeEta();
 }
 
 
@@ -287,9 +287,13 @@ void TransportGradientNeumann :: computeTangent(FloatMatrix &tangent, TimeStep *
     SparseMtrxType stype = solver->giveRecommendedMatrix(true);
     double rve_size = this->domainSize();
 
-    // 1. Kuu*us = -Kus*s   =>  us = -Kuu\Ku  where u = us*s
-    // 2. Ks = Kus'*us
-    // 3. Ks*lambda = I
+    // Solving the system:
+    // [Kuu Kus] [u] = [0]  => Kuu*u + Kus*s = 0
+    // [Ksu 0  ] [s] = [I]  => Ksu*u         = I
+    // 1. u = -Kuu^(-1)*Kus*s. Denote us = -Kuu^(-1)*Kus
+    // 2. -[Ksu*us]*s = I. Denote Ks = Ksu*us
+    // 3. s = Ks^(-1)*I
+    // Here, s = tangent as rhs is identity.
     
     // 1.
     // This is not very good. We have to keep Kuu and Kff in memory at the same time. Not optimal
@@ -315,19 +319,82 @@ void TransportGradientNeumann :: computeTangent(FloatMatrix &tangent, TimeStep *
     }
 
     std :: unique_ptr< SparseMtrx > Kuu(Kff->giveSubMatrix(loc_u, loc_u));
+    FloatMatrix KusD;
+#if 0
     // NOTE: Kus is actually a dense matrix, but we have to make it a dense matrix first
     std :: unique_ptr< SparseMtrx > Kus(Kff->giveSubMatrix(loc_u, loc_s));
-
-    FloatMatrix KusD;
     Kus->toFloatMatrix(KusD);
-
-    // Release a large chunk of redundant memory early.
     Kus.reset();
+#else
+    // Ugly code-duplication, but worth it for performance.
+    // PETSc doesn't allow you to take non-symmetric submatrices from a SBAIJ-matrix.
+    // Which means extracting "Kus" puts limitations on Kuu.
+    FloatMatrix Ke, KeT;
+    IntArray loc_r, bNodes;
+
+    KusD.resize(neq - loc_s.giveSize(), loc_s.giveSize());
+    for ( int i = 0; i < this->surfSets.giveSize(); ++i ) {
+        int surfSet = this->surfSets[i];
+        Set *set = this->giveDomain()->giveSet(surfSet);
+        const IntArray &boundaries = set->giveBoundaryList();
+        for ( int pos = 0; pos < boundaries.giveSize() / 2; ++pos ) {
+            Element *e = this->giveDomain()->giveElement( boundaries[pos * 2] );
+            int boundary = boundaries[pos * 2 + 1];
+
+            e->giveInterpolation()->boundaryGiveNodes(bNodes, boundary);
+            e->giveBoundaryLocationArray(loc_r, bNodes, this->dofs, fnum);
+
+            this->integrateTangent(Ke, e, boundary, i, pos);
+            Ke.negated();
+            KeT.beTranspositionOf(Ke);
+
+            KusD.assemble(KeT, loc_r, {1, 2, 3}); // Contributions to delta_v equations
+        }
+    }
+#endif
+    // Release a large chunk of redundant memory early.
     Kff.reset();
 
     // 1.
     FloatMatrix us;
-    solver->solve(*Kuu, KusD, us);
+#if 1
+    // Initial guess can help significantly for KSP solver,
+    // However, it is difficult to construct a cheap, reliable estimate for Neumann b.c.
+    // We need the tangent to relate q-bar to g-bar. Since this would be meaningless 
+    // we shall instead assume isotropic response, and 
+    int nsd = domain->giveNumberOfSpatialDimensions();
+#if 0
+    FloatMatrix Di(nsd, nsd), tmpD, tmpDi;
+    double vol = 0;
+    for ( auto &e : domain->giveElements() ) {
+        static_cast< TransportElement* >(e.get())->computeConstitutiveMatrixAt(tmpD, Capacity, 
+            e->giveDefaultIntegrationRulePtr()->getIntegrationPoint(1), tStep);
+        double tmpVol = e->computeVolumeAreaOrLength();
+        vol += tmpVol;
+        tmpDi.beInverseOf(tmpD);
+        Di.add(tmpVol, tmpDi);
+    }
+    Di.times(1/vol);
+#endif
+    us.resize(KusD.giveNumberOfRows(), KusD.giveNumberOfColumns());
+    for ( auto &n : domain->giveDofManagers() ) {
+        int k1 = n->giveDofWithID( this->dofs(0) )->__giveEquationNumber();
+        if ( k1 ) {
+            FloatArray *coords = n->giveCoordinates();
+            for ( int i = 1; i <= nsd; ++i ) {
+                us.at(k1, i) += -(coords->at(i) - mCenterCoord.at(i));
+            }
+        }
+    }
+    // Now "us" will have roughly the correct shape, but the wrong magnitude, so we rescale it:
+    FloatMatrix KusD0;
+    Kuu->times(us, KusD0);
+    us.times( KusD.computeFrobeniusNorm() / KusD0.computeFrobeniusNorm() );
+#endif
+
+    if ( solver->solve(*Kuu, KusD, us) & NM_NoSuccess ) {
+        OOFEM_ERROR("Failed to solve Kuu");
+    }
     us.negated();
 
     // 2.
@@ -347,10 +414,11 @@ void TransportGradientNeumann :: giveFluxLocationArray(IntArray &oCols, const Un
 }
 
 
-void TransportGradientNeumann :: computePhi()
+void TransportGradientNeumann :: computeEta()
 {
+    OOFEM_LOG_INFO("Computing eta for Neumann b.c.\n");
     TimeStep *tStep = domain->giveEngngModel()->giveCurrentStep();
-    phi.resize(this->surfSets.giveSize());
+    eta.resize(this->surfSets.giveSize());
     for ( int i = 0; i < this->surfSets.giveSize(); ++i ) {
         // Compute the coordinate indices based on what surface we're on.
         int i_r;
@@ -370,18 +438,18 @@ void TransportGradientNeumann :: computePhi()
         Set *setPointer = this->giveDomain()->giveSet(surfSets[i]);
         const IntArray &boundaries = setPointer->giveBoundaryList();
 
-        phi[i].resize(boundaries.giveSize() / 2);
+        eta[i].resize(boundaries.giveSize() / 2);
 
-        // Set up and solve: c * phi_c = f
+        // Set up and solve: c * eta_c = f
         // which represents the equations:
-        // int (phi - 1) dA = 0
-        // int (phi - 1) r dA = 0
-        // int (phi - 1) t dA = 0
+        // int (eta - 1) dA = 0
+        // int (eta - 1) r dA = 0
+        // int (eta - 1) t dA = 0
         //
-        // int phi_0 + phi_r * r + phi_t * t dA = A
-        // int (phi_0 + phi_r * r + phi_t * t) r dA = int r dA
-        // int (phi_0 + phi_r * r + phi_t * t) t dA = int t dA
-        FloatArray f(3), phi_c;
+        // int eta_0 + eta_r * r + eta_t * t dA = A
+        // int (eta_0 + eta_r * r + eta_t * t) r dA = int r dA
+        // int (eta_0 + eta_r * r + eta_t * t) t dA = int t dA
+        FloatArray f(3), eta_c;
         FloatMatrix c(3, 3);
         for ( int pos = 0; pos < boundaries.giveSize() / 2; ++pos ) {
             Element *e = this->giveDomain()->giveElement( boundaries[pos * 2] );
@@ -423,7 +491,7 @@ void TransportGradientNeumann :: computePhi()
                 c(2, 2) += dA * k * t * t;
             }
         }
-        c.solveForRhs(f, phi_c);
+        c.solveForRhs(f, eta_c);
 
         for ( int pos = 0; pos < boundaries.giveSize() / 2; ++pos ) {
             Element *e = this->giveDomain()->giveElement( boundaries[pos * 2] );
@@ -434,7 +502,7 @@ void TransportGradientNeumann :: computePhi()
             std :: unique_ptr< IntegrationRule > ir( interp->giveBoundaryIntegrationRule(order, boundary) );
             static_cast< TransportElement* >(e)->computeConstitutiveMatrixAt(d, Capacity, e->giveDefaultIntegrationRulePtr()->getIntegrationPoint(1), tStep);
 
-            phi[i][pos].resize(ir->giveNumberOfIntegrationPoints());
+            eta[i][pos].resize(ir->giveNumberOfIntegrationPoints());
             for ( auto &gp: *ir ) {
                 const FloatArray &lcoords = gp->giveNaturalCoordinates();
                 FEIElementGeometryWrapper cellgeo(e);
@@ -449,7 +517,7 @@ void TransportGradientNeumann :: computePhi()
                 tmp.beProductOf(d, normal);
                 double k = tmp.dotProduct(normal);
 
-                phi[i][pos].at(gp->giveNumber()) = (phi_c[0] + phi_c[1] * r + phi_c[2] * t) * k;
+                eta[i][pos].at(gp->giveNumber()) = (eta_c[0] + eta_c[1] * r + eta_c[2] * t) * k;
             }
         }
     }
@@ -471,11 +539,11 @@ void TransportGradientNeumann :: integrateTangent(FloatMatrix &oTangent, Element
     for ( auto &gp: *ir ) {
         const FloatArray &lcoords = gp->giveNaturalCoordinates();
         FEIElementGeometryWrapper cellgeo(e);
-        // If phi isn't set, assume that classical Neumann b.c. is used (phi = 1)
+        // If eta isn't set, assume that classical Neumann b.c. is used (eta = 1)
         double scale = 1.0;
-        if ( !phi.empty() ) {
-            //printf(" surfset %d / %d, pos %d, number %d\n", surfSet, pos, gp->giveNumber(), phi.size());
-            scale = phi[surfSet][pos].at(gp->giveNumber());
+        if ( !eta.empty() ) {
+            //printf(" surfset %d / %d, pos %d, number %d\n", surfSet, pos, gp->giveNumber(), eta.size());
+            scale = eta[surfSet][pos].at(gp->giveNumber());
         }
 
         double detJ = interp->boundaryEvalNormal(normal, boundary, lcoords, cellgeo);

@@ -102,6 +102,8 @@ StructuralMaterial :: giveRealStressVector(FloatArray &answer, GaussPoint *gp, c
         this->giveRealStressVector_Lattice3d(answer, gp, reducedStrain, tStep);
     } else if ( mode == _2dPlateSubSoil ) {
         this->giveRealStressVector_2dPlateSubSoil(answer, gp, reducedStrain, tStep);
+    } else if ( mode == _3dBeamSubSoil ) {
+        this->giveRealStressVector_3dBeamSubSoil(answer, gp, reducedStrain, tStep);
     }
 }
 
@@ -295,6 +297,12 @@ void
 StructuralMaterial :: giveRealStressVector_2dPlateSubSoil(FloatArray &answer, GaussPoint *gp, const FloatArray &reducedStrain, TimeStep *tStep)
 {
     OOFEM_ERROR("2dPlateSubSoil mode not supported");
+}
+
+void
+StructuralMaterial :: giveRealStressVector_3dBeamSubSoil(FloatArray &answer, GaussPoint *gp, const FloatArray &reducedStrain, TimeStep *tStep)
+{
+    OOFEM_ERROR("3dBeamSubSoil mode not supported");
 }
 
 
@@ -958,6 +966,18 @@ StructuralMaterial :: giveVoigtSymVectorMask(IntArray &answer, MaterialMode mmod
         };
         return 6;
 
+    case _3dBeamSubSoil: ///@todo This isn't actually fixed yet. Should be made compatible with 3dShell and 2dBeam
+#if 1
+        answer.enumerate(6);
+        return 6;
+
+#else
+        answer = {
+            1, 5, 6, 7, 8, 9
+        };
+        return 12;
+#endif
+	
     case _Unknown:
         answer.clear();
         return 0;
@@ -1229,6 +1249,14 @@ StructuralMaterial :: give2dPlateSubSoilStiffMtrx(FloatMatrix &answer,
     OOFEM_ERROR("No general implementation provided");
 }
 
+void
+StructuralMaterial :: give3dBeamSubSoilStiffMtrx(FloatMatrix &answer,
+						 MatResponseMode mmode, GaussPoint *gp,
+						 TimeStep *tStep)
+{
+    OOFEM_ERROR("No general implementation provided");
+}
+
 
 
 
@@ -1320,15 +1348,6 @@ StructuralMaterial :: computePrincipalValues(FloatArray &answer, const FloatArra
         if ( nonzeroFlag == 0 ) {
             return;
         }
-
-        //Problem with numerical stability for hydrostatic case, handle directly-TODO
-//         if (fabs( s.at(4) ) < 1.e-20 && fabs( s.at(5)) < 1.e-20 && fabs( s.at(6)) < 1.e-20 ){
-//             solve = false;
-//             s1 = s.at(1);
-//             s2 = s.at(2);
-//             s3 = s.at(3);
-//         }
-
 
         if ( mode == principal_stress ) {
             I1 = s.at(1) + s.at(2) + s.at(3);
@@ -2127,7 +2146,7 @@ StructuralMaterial :: giveIPValue(FloatArray &answer, GaussPoint *gp, InternalSt
     } else if ( type == IST_Temperature ) {
         /* add external source, if provided, such as staggered analysis */
         FieldManager *fm = domain->giveEngngModel()->giveContext()->giveFieldManager();
-        FM_FieldPtr tf;
+        FieldPtr tf;
         int err;
         if ( ( tf = fm->giveField(FT_Temperature) ) ) {
             // temperature field registered
@@ -2176,7 +2195,13 @@ StructuralMaterial :: giveIPValue(FloatArray &answer, GaussPoint *gp, InternalSt
     } else if ( type == IST_FirstPKStressTensor ) {
         answer = status->givePVector();
         return 1;
-    } else {
+    } else if ( type == IST_EigenStrainTensor ) {
+        FloatArray eigenstrain;
+        StructuralElement *selem = dynamic_cast< StructuralElement * >( gp->giveElement() );
+        selem->computeResultingIPEigenstrainAt(eigenstrain, tStep, gp, VM_Total );
+        StructuralMaterial :: giveFullSymVectorForm( answer, eigenstrain, gp->giveMaterialMode() );
+        return 1;
+    }else {
         return Material :: giveIPValue(answer, gp, type, tStep);
     }
 }
@@ -2204,7 +2229,7 @@ StructuralMaterial :: computeStressIndependentStrainVector(FloatArray &answer,
     //sum up all prescribed temperatures over an element
     //elem->computeResultingIPTemperatureAt(et, tStep, gp, mode);
     if ( selem ) {
-        selem->computeResultingIPTemperatureAt(et, tStep, gp, mode);        // HUHU
+        selem->computeResultingIPTemperatureAt(et, tStep, gp, mode);
     }
 
     //sum up all prescribed eigenstrain over an element
@@ -2218,7 +2243,7 @@ StructuralMaterial :: computeStressIndependentStrainVector(FloatArray &answer,
 
     /* add external source, if provided */
     FieldManager *fm = domain->giveEngngModel()->giveContext()->giveFieldManager();
-    FM_FieldPtr tf;
+    FieldPtr tf;
 
     if ( ( tf = fm->giveField(FT_Temperature) ) ) {
         // temperature field registered
@@ -2306,7 +2331,7 @@ StructuralMaterial :: computeStressIndependentStrainVector_3d(FloatArray &answer
 
     /* add external source, if provided */
     FieldManager *fm = domain->giveEngngModel()->giveContext()->giveFieldManager();
-    FM_FieldPtr tf = fm->giveField(FT_Temperature);
+    FieldPtr tf = fm->giveField(FT_Temperature);
 
     if ( tf ) {
         // temperature field registered

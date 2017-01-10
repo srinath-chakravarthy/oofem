@@ -49,6 +49,7 @@
 //@{
 #define _IFT_IsotropicDamageMaterial_talpha "talpha"
 #define _IFT_IsotropicDamageMaterial_maxOmega "maxomega"
+#define _IFT_IsotropicDamageMaterial_permstrain "ps"
 //@}
 
 namespace oofem {
@@ -93,7 +94,7 @@ protected:
 
 public:
     /// Constructor
-    IsotropicDamageMaterialStatus(int n, Domain * d, GaussPoint * g);
+    IsotropicDamageMaterialStatus(int n, Domain *d, GaussPoint *g);
     /// Destructor
     virtual ~IsotropicDamageMaterialStatus();
 
@@ -168,19 +169,22 @@ protected:
     /// Maximum limit on omega. The purpose is elimination of a too compliant material which may cause convergence problems. Set to something like 0.99 if needed.
     double maxOmega;
 
+    /// Indicator of the type of permanent strain formulation (0 = standard damage with no permanent strain)
+    int permStrain;
+
     /// Reference to bulk (undamaged) material
     LinearElasticMaterial *linearElasticMaterial;
     /**
      * Variable controlling type of loading/unloading law, default set to idm_strainLevel
      * defines the two two possibilities:
-     * - idm_strainLevelCR the unloaing takes place, when strain level is smaller than the largest level ever reached;
-     * - idm_damageLevelCR the unloaing takes place, when damage level is smaller than the largest damage ever  reached;
+     * - idm_strainLevelCR the unloading takes place, when strain level is smaller than the largest level ever reached;
+     * - idm_damageLevelCR the unloading takes place, when damage level is smaller than the largest damage ever  reached;
      */
     enum loaUnloCriterium { idm_strainLevelCR, idm_damageLevelCR } llcriteria;
 
 public:
     /// Constructor
-    IsotropicDamageMaterial(int n, Domain * d);
+    IsotropicDamageMaterial(int n, Domain *d);
     /// Destructor
     virtual ~IsotropicDamageMaterial();
 
@@ -214,6 +218,8 @@ public:
     virtual int giveIPValue(FloatArray &answer, GaussPoint *gp, InternalStateType type, TimeStep *tStep);
 
     virtual void giveThermalDilatationVector(FloatArray &answer, GaussPoint *, TimeStep *);
+    virtual double evaluatePermanentStrain(double kappa, double omega) { return 0.; }
+
     /**
      * Returns the value of material property 'aProperty'. Property must be identified
      * by unique int id. Integration point also passed to allow for materials with spatially

@@ -62,7 +62,9 @@ double PrescribedGradient :: give(Dof *dof, ValueModeType mode, double time)
     FloatArray *coords = dof->giveDofManager()->giveCoordinates();
 
     if ( coords->giveSize() != this->mCenterCoord.giveSize() ) {
-        OOFEM_ERROR("Size of coordinate system different from center coordinate in b.c.");
+    	mCenterCoord.resizeWithValues(coords->giveSize());
+//        OOFEM_ERROR("Size of coordinate system different from center coordinate in b.c.");
+//        printf("Warning: Size of coordinate system different from center coordinate in b.c.\n");
     }
 
     double factor = 0;
@@ -79,6 +81,8 @@ double PrescribedGradient :: give(Dof *dof, ValueModeType mode, double time)
     FloatArray dx;
     dx.beDifferenceOf(* coords, this->mCenterCoord);
 
+    mGradient.resizeWithData(coords->giveSize(), coords->giveSize());
+
     FloatArray u;
     u.beProductOf(mGradient, dx);
     u.times( factor );
@@ -88,7 +92,12 @@ double PrescribedGradient :: give(Dof *dof, ValueModeType mode, double time)
         if (!pos){
       pos = 1;
     }
-    return u.at(pos);
+    	return u.at(pos);
+    }
+    else {
+    	// XFEM dofs
+    	return 0.0;
+    }
 }
 
 

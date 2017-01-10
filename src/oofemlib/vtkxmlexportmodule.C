@@ -546,7 +546,7 @@ VTKXMLExportModule :: doOutput(TimeStep *tStep, bool forcedOutput)
             if ( tstep_substeps_out_flag ) {
                 subStep << "." << tStep->giveSubStepNumber();
             }
-            pvdEntry << "<DataSet timestep=\"" << tStep->giveIntrinsicTime() * this->timeScale << subStep.str() << "\" group=\"\" part=\"" << i << "\" file=\"" << this->emodel->giveOutputBaseFileName() << fext << ".vtu\"/>";
+            pvdEntry << "<DataSet timestep=\"" << tStep->giveTargetTime() * this->timeScale << subStep.str() << "\" group=\"\" part=\"" << i << "\" file=\"" << this->emodel->giveOutputBaseFileName() << fext << ".vtu\"/>";
             this->pvdBuffer.push_back( pvdEntry.str() );
         }
 
@@ -557,7 +557,7 @@ VTKXMLExportModule :: doOutput(TimeStep *tStep, bool forcedOutput)
         if ( tstep_substeps_out_flag ) {
             subStep << "." << tStep->giveSubStepNumber();
         }
-        pvdEntry << "<DataSet timestep=\"" << tStep->giveIntrinsicTime() * this->timeScale << subStep.str() << "\" group=\"\" part=\"\" file=\"" << fname << "\"/>";
+        pvdEntry << "<DataSet timestep=\"" << tStep->giveTargetTime() * this->timeScale << subStep.str() << "\" group=\"\" part=\"\" file=\"" << fname << "\"/>";
         this->pvdBuffer.push_back( pvdEntry.str() );
         this->writeVTKCollection();
     }
@@ -719,6 +719,11 @@ VTKXMLExportModule :: setupVTKPiece(VTKPiece &vtkPiece, TimeStep *tStep, int reg
                 continue;
             }
 
+	    //skip materials with casting time > current time
+	    if ( !elem->isCast(tStep) ) {
+	      continue;
+	    }
+	    
             if ( elem->giveParallelMode() != Element_local ) {
                 continue;
             }
@@ -763,9 +768,9 @@ VTKXMLExportModule :: writeVTKPiece(VTKPiece &vtkPiece, TimeStep *tStep)
     // (so-called) composite element consisting of several VTK cells (layered structures, XFEM, etc.).
 
     if ( !vtkPiece.giveNumberOfCells() ) { // handle piece with no elements. Otherwise ParaView complains if the whole vtu file is without <Piece></Piece>
-         fprintf(this->fileStream, "<Piece NumberOfPoints=\"0\" NumberOfCells=\"0\">\n");
-         fprintf(this->fileStream, "<Cells>\n<DataArray type=\"Int32\" Name=\"connectivity\" format=\"ascii\"> </DataArray>\n</Cells>\n");
-         fprintf(this->fileStream, "</Piece>\n");
+//          fprintf(this->fileStream, "<Piece NumberOfPoints=\"0\" NumberOfCells=\"0\">\n");
+//          fprintf(this->fileStream, "<Cells>\n<DataArray type=\"Int32\" Name=\"connectivity\" format=\"ascii\"> </DataArray>\n</Cells>\n");
+//          fprintf(this->fileStream, "</Piece>\n");
         return;
     }
 
@@ -1356,6 +1361,11 @@ VTKXMLExportModule :: initRegionNodeNumbering(IntArray &regionG2LNodalNumbers,
         if ( !element->isActivated(tStep) ) {                    //skip inactivated elements
             continue;
         }
+
+	//skip materials with casting time > current time
+	if ( !element->isCast(tStep) ) {                    
+	  continue;
+	}
 
         if ( element->giveParallelMode() != Element_local ) {
             continue;

@@ -127,6 +127,11 @@ public:
     int giveSetNumber() const { return this->setNumber; }
 
     /**
+     * Returns true if the dictionary contains the requested property.
+     * @param a Id of requested property.
+     */
+    virtual bool hasProperty(CrossSectionProperty a);
+    /**
      * Returns the value of cross section property at given point.
      * The default implementation assumes constant properties stored in propertyDictionary.
      * @param a Id of requested property.
@@ -248,6 +253,7 @@ public:
     virtual double predictRelativeRedistributionCost(GaussPoint *gp) { return 1.0; }
 
     virtual IRResultType initializeFrom(InputRecord *ir);
+    virtual void giveInputRecord(DynamicInputRecord &input);
 
     /**
      * Returns the material associated with the GP.

@@ -84,6 +84,10 @@ set (sm_element
     Elements/quad1platesubsoil.C 
     Elements/tria1platesubsoil.C
     Elements/trwarp.C
+    Elements/PlaneStress/basicelement.C
+    Elements/structural2delement.C
+    Elements/structural3delement.C
+    #Elements/phasefieldelement.C
     #qplanstrssphf.C
     )
 
@@ -137,6 +141,7 @@ set (sm_emodel
 set (sm_loads
     Loads/tf1.C
     Loads/usrdeftempfield.C
+    Loads/foreigntempfieldload.C
     Loads/rotatingboundary.C
     Loads/constantpressureload.C
     Loads/structtemperatureload.C
@@ -168,7 +173,6 @@ set (sm_material
     Materials/ConcreteMaterials/mazarsmodelnl.C
     Materials/ConcreteMaterials/mplasticmaterial2.C
     Materials/ConcreteMaterials/compodamagemat.C
-    Materials/RheoChainMaterials/b3solidmat.C
     Materials/RheoChainMaterials/rheoChM.C 
     Materials/RheoChainMaterials/maxwellChM.C 
     Materials/RheoChainMaterials/kelvinChM.C
@@ -179,6 +183,7 @@ set (sm_material
     Materials/RheoChainMaterials/b3solidmat.C
     Materials/RheoChainMaterials/mps.C
     Materials/RheoChainMaterials/mpsdammat.C
+    Materials/RheoChainMaterials/eurocode2creep.C
     Materials/structuralfe2material.C
     Materials/rcsd.C 
     Materials/rcsde.C 
@@ -206,11 +211,13 @@ set (sm_material
     Materials/simplevitrificationmaterial.C
     Materials/anisodamagemodel.C
     Materials/winklerpasternak.C
+    Materials/winklermodel.C
     Materials/structmatsettable.C
     Materials/tutorialmaterial.C
     Materials/graddpmaterialextensioninterface.C
     Materials/rcm2.C
     Materials/isodamagemodel.C
+    Materials/steelrelaxmat.C 
     Materials/viscoplastic.C
     Materials/viscoplasticnl.C
     )
@@ -273,10 +280,13 @@ set (sm_xfem
     xfem/enrichmentitems/delamination.C
     xfem/enrichmentitems/shellcrack.C
     xfem/propagationlaws/plhoopstresscirc.C
+    xfem/propagationlaws/plprincipalstrain.C
     xfem/propagationlaws/plmaterialforce.C
+    xfem/propagationlaws/plczdamageradius.C
     xfem/xfemstructuremanager.C
     xfem/matforceevaluator.C
     xfem/nucleationcriteria/ncprincipalstress.C
+    xfem/nucleationcriteria/ncprincipalstrain.C
     EngineeringModels/xfemsolverinterface.C
     )
 

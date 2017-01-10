@@ -72,7 +72,7 @@ NumericalMethod *DIIDynamic :: giveNumericalMethod(MetaStep *mStep)
 
     nMethod.reset( classFactory.createSparseLinSolver(solverType, this->giveDomain(1), this) );
     if ( !nMethod ) {
-        OOFEM_ERROR("linear solver creation failed");
+        OOFEM_ERROR("linear solver creation failed for lstype %d", solverType);
     }
 
     return nMethod.get();
@@ -265,7 +265,7 @@ void DIIDynamic :: solveYourselfAt(TimeStep *tStep)
 
         stiffnessMatrix->buildInternalStructure( this, 1, EModelDefaultEquationNumbering() );
 
-        this->assemble(*stiffnessMatrix, tStep, EffectiveTangentAssembler(false, 1 + this->delta * a1,  this->a0 + this->eta * this->a1),
+        this->assemble(*stiffnessMatrix, tStep, EffectiveTangentAssembler(TangentStiffness, false, 1 + this->delta * a1,  this->a0 + this->eta * this->a1),
                        EModelDefaultEquationNumbering(), domain);
 
         help.resize(neq);
@@ -284,7 +284,7 @@ void DIIDynamic :: solveYourselfAt(TimeStep *tStep)
         OOFEM_LOG_DEBUG("Assembling stiffness matrix\n");
 #endif
         stiffnessMatrix->zero();
-        this->assemble(*stiffnessMatrix, tStep, EffectiveTangentAssembler(false, 1 + this->delta * a1,  this->a0 + this->eta * this->a1),
+        this->assemble(*stiffnessMatrix, tStep, EffectiveTangentAssembler(TangentStiffness, false, 1 + this->delta * a1,  this->a0 + this->eta * this->a1),
                        EModelDefaultEquationNumbering(), domain);
     }
 
@@ -418,7 +418,7 @@ DIIDynamic :: timesMtrx(FloatArray &vec, FloatArray &answer, CharType type, Doma
     int nelem = domain->giveNumberOfElements();
     int neq   = this->giveNumberOfDomainEquations( domain->giveNumber(), EModelDefaultEquationNumbering() );
     int i, j, k, jj, kk, n;
-    FloatMatrix charMtrx;
+    FloatMatrix charMtrx, R;
     IntArray loc;
     Element *element;
     EModelDefaultEquationNumbering en;
@@ -435,6 +435,12 @@ DIIDynamic :: timesMtrx(FloatArray &vec, FloatArray &answer, CharType type, Doma
 
         element->giveLocationArray(loc, en);
         element->giveCharacteristicMatrix(charMtrx, type, tStep);
+        if ( charMtrx.isNotEmpty() ) {
+          ///@todo This rotation matrix is not flexible enough.. it can only work with full size matrices and doesn't allow for flexibility in the matrixassembler.
+          if ( element->giveRotationMatrix(R) ) {
+            charMtrx.rotatedWith(R);
+          }
+        }
 
 #ifdef DEBUG
         if ( loc.giveSize() != charMtrx.giveNumberOfRows() ) {

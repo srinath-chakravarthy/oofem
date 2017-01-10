@@ -158,6 +158,7 @@ protected:
 
     // IDs of all potential enriched dofs
     IntArray mXFEMPotentialDofIDs;
+    
 public:
 
     /**
@@ -227,7 +228,14 @@ public:
     virtual void updateYourself(TimeStep *tStep);
 
     void propagateFronts(bool &oAnyFronHasPropagated);
+    void initiateFronts(bool &oAnyFronHasPropagated, TimeStep *tStep);
     bool hasPropagatingFronts();
+    bool hasInitiationCriteria();
+
+    /// Remove all enrichment items
+    void clearEnrichmentItems();
+
+    void appendEnrichmentItems(std :: vector< std :: unique_ptr< EnrichmentItem > > &iEIlist);
 
     void nucleateEnrichmentItems(bool &oNewItemsWereNucleated);
     bool hasNucleationCriteria();

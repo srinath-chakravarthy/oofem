@@ -74,20 +74,14 @@ Beam3d :: Beam3d(int n, Domain *aDomain) : StructuralElement(n, aDomain)
 
 Beam3d :: ~Beam3d()
 {
-
-    if ( ghostNodes [ 0 ] ) {
-        delete ghostNodes [ 0 ];
-    }
-    if ( ghostNodes [ 1 ] ) {
-        delete ghostNodes [ 1 ];
-    }
+    delete ghostNodes [ 0 ];
+    delete ghostNodes [ 1 ];
 }
 
 FEInterpolation *Beam3d :: giveInterpolation() const { return & interp; }
 
 void
 Beam3d :: computeBmatrixAt(GaussPoint *gp, FloatMatrix &answer, int li, int ui)
-// Returns the strain matrix of the receiver.
 // eeps = {\eps_x, \gamma_xz, \gamma_xy, \der{phi_x}{x}, \kappa_y, \kappa_z}^T
 {
     double l, ksi, kappay, kappaz, c1y, c1z;
@@ -133,7 +127,6 @@ Beam3d :: computeBmatrixAt(GaussPoint *gp, FloatMatrix &answer, int li, int ui)
 
 
 void Beam3d :: computeGaussPoints()
-// Sets up the array of Gauss Points of the receiver.
 {
     if ( integrationRulesArray.size() == 0 ) {
         // the gauss point is used only when methods from crosssection and/or material
@@ -192,39 +185,14 @@ Beam3d :: computeNmatrixAt(const FloatArray &iLocCoord, FloatMatrix &answer)
     answer.at(6, 12) = ( -2. * ( 1. - kappaz ) * ksi + 3. * ksi2 ) / c1z;
 }
 
-void
-Beam3d :: computeLocalStiffnessMatrix(FloatMatrix &answer, MatResponseMode rMode, TimeStep *tStep)
-// Returns the stiffness matrix of the receiver, expressed in the global
-// axes. No integration over volume done, beam with constant material and crosssection
-// parameters assumed.
-{
-    // compute clamped stifness
-    this->computeClampedStiffnessMatrix(answer, rMode, tStep);
-}
-
 
 void
 Beam3d :: computeStiffnessMatrix(FloatMatrix &answer, MatResponseMode rMode, TimeStep *tStep)
-// Returns the stiffness matrix of the receiver, expressed in the global
-// axes. No integration over volume done, beam with constant material and crosssection
-// parameters assumed.
-{
-    // compute clamped stiffness
-    this->computeLocalStiffnessMatrix(answer, rMode, tStep);
-}
-
-
-void
-Beam3d :: computeClampedStiffnessMatrix(FloatMatrix &answer,
-                                        MatResponseMode rMode, TimeStep *tStep)
-// Returns the stiffness matrix of the receiver, expressed in the local
-// axes. No integration over volume done, beam with constant material and crosssection
-// parameters assumed.
 {
     double l = this->computeLength();
     FloatMatrix B, DB, d;
     answer.clear();
-    for ( GaussPoint *gp: *this->giveDefaultIntegrationRulePtr() ) {
+    for ( auto &gp: *this->giveDefaultIntegrationRulePtr() ) {
         this->computeBmatrixAt(gp, B);
         this->computeConstitutiveMatrixAt(d, rMode, gp, tStep);
         double dV = gp->giveWeight() * 0.5 * l;
@@ -232,6 +200,12 @@ Beam3d :: computeClampedStiffnessMatrix(FloatMatrix &answer,
         answer.plusProductSymmUpper(B, DB, dV);
     }
     answer.symmetrized();
+
+    if (subsoilMat) {
+      FloatMatrix k;
+      this->computeSubSoilStiffnessMatrix(k, rMode, tStep);
+      answer.add(k);
+    }
 }
 
 
@@ -300,7 +274,6 @@ Beam3d :: computeLoadGToLRotationMtrx(FloatMatrix &answer)
 
 bool
 Beam3d :: computeGtoLRotationMatrix(FloatMatrix &answer)
-// Returns the rotation matrix of the receiver.
 {
     FloatMatrix lcs;
     
@@ -352,12 +325,29 @@ Beam3d :: computeGtoLRotationMatrix(FloatMatrix &answer)
     return true;
 }
 
+void
+Beam3d :: B3SSMI_getUnknownsGtoLRotationMatrix(FloatMatrix &answer)
+// Returns the rotation matrix for element unknowns
+{
+    FloatMatrix lcs;
+    
+    answer.resize(6, 6);
+    answer.zero();
+
+    this->giveLocalCoordinateSystem(lcs);
+    for ( int i = 1; i <= 3; i++ ) {
+        for ( int j = 1; j <= 3; j++ ) {
+            answer.at(i, j) = lcs.at(i, j);
+            answer.at(i + 3, j + 3) = lcs.at(i, j);
+        }
+    }
+
+}
 
 double
 Beam3d :: computeVolumeAround(GaussPoint *gp)
 {
-    double weight  = gp->giveWeight();
-    return weight * 0.5 * this->computeLength();
+    return gp->giveWeight() * 0.5 * this->computeLength();
 }
 
 
@@ -369,6 +359,33 @@ Beam3d :: giveIPValue(FloatArray &answer, GaussPoint *gp, InternalStateType type
         return 1;
     } else if ( type == IST_BeamStrainCurvatureTensor ) {
         answer = static_cast< StructuralMaterialStatus * >( gp->giveMaterialStatus() )->giveStrainVector();
+        return 1;
+    } else if ( type == IST_ShellForceTensor || type == IST_ShellStrainTensor ) { 
+        // Order in generalized strain is:
+        // {\eps_x, \gamma_xz, \gamma_xy, \der{phi_x}{x}, \kappa_y, \kappa_z}
+        const FloatArray &help = type == IST_ShellForceTensor ? 
+            static_cast< StructuralMaterialStatus * >( gp->giveMaterialStatus() )->giveStressVector() :
+            static_cast< StructuralMaterialStatus * >( gp->giveMaterialStatus() )->giveStrainVector();
+
+        answer.resize(6);
+        answer.at(1) = help.at(1); // nx
+        answer.at(2) = 0.0;        // ny
+        answer.at(3) = 0.0;        // nz
+        answer.at(4) = 0.0;        // vyz
+        answer.at(5) = help.at(2); // vxz
+        answer.at(6) = help.at(3); // vxy
+        return 1;
+    } else if ( type == IST_ShellMomentTensor || type == IST_CurvatureTensor ) {
+        const FloatArray &help = type == IST_ShellMomentTensor ? 
+            static_cast< StructuralMaterialStatus * >( gp->giveMaterialStatus() )->giveStressVector() :
+            static_cast< StructuralMaterialStatus * >( gp->giveMaterialStatus() )->giveStrainVector();
+        answer.resize(6);
+        answer.at(1) = help.at(4); // mx
+        answer.at(2) = 0.0;        // my
+        answer.at(3) = 0.0;        // mz
+        answer.at(4) = 0.0;        // myz
+        answer.at(5) = help.at(6); // mxz
+        answer.at(6) = help.at(5); // mxy
         return 1;
     } else {
         return StructuralElement :: giveIPValue(answer, gp, type, tStep);
@@ -387,7 +404,6 @@ Beam3d :: giveDofManDofIDMask(int inode, IntArray &answer) const
 
 double
 Beam3d :: computeLength()
-// Returns the length of the receiver.
 {
     double dx, dy, dz;
     Node *nodeA, *nodeB;
@@ -408,7 +424,6 @@ Beam3d :: computeLength()
 void
 Beam3d :: computeKappaCoeffs(TimeStep *tStep)
 {
-    // computes kappa coeff
     // kappa_y = (6*E*Iy)/(k*G*A*l^2)
 
     FloatMatrix d;
@@ -496,7 +511,7 @@ Beam3d :: giveLocalCoordinateSystem(FloatMatrix &answer)
 
         help.at(3) = 1.0;         // up-vector
         // here is ly is used as a temp var
-        if ( acos(lx.dotProduct(help)) < 0.001 ) { // Check if it is vertical
+        if ( fabs(lx.dotProduct(help)) > 0.999 ) { // Check if it is vertical
             ly = {0., 1., 0.};
         } else {
             ly.beVectorProductOf(lx, help);
@@ -573,6 +588,9 @@ Beam3d :: initializeFrom(InputRecord *ir)
       //dofsToCondense = NULL;
     }
 
+    this->subsoilMat = 0;
+    IR_GIVE_OPTIONAL_FIELD(ir, this->subsoilMat, _IFT_Beam3d_subsoilmat);
+    
     return StructuralElement :: initializeFrom(ir);
 }
 
@@ -619,6 +637,16 @@ Beam3d :: giveEndForcesVector(FloatArray &answer, TimeStep *tStep)
     this->computeForceLoadVector(loadEndForces, tStep, VM_Total);
     if ( loadEndForces.giveSize() ) {
         answer.subtract(loadEndForces);
+    }
+
+    if (subsoilMat) {
+      // @todo: linear subsoil assumed here; more general approach should integrate internal forces
+      FloatMatrix k;
+      FloatArray u, F;
+      this->computeSubSoilStiffnessMatrix(k, TangentStiffness, tStep);
+      this->computeVectorOf(VM_Total, tStep, u);
+      F.beProductOf(k, u);
+      answer.add(F);
     }
 }
 
@@ -798,10 +826,7 @@ Beam3d :: printOutputAt(FILE *File, TimeStep *tStep)
 
 void
 Beam3d :: computeLocalForceLoadVector(FloatArray &answer, TimeStep *tStep, ValueModeType mode)
-// Computes the load vector of the receiver, at tStep.
 {
-    FloatMatrix stiff;
-
     StructuralElement :: computeLocalForceLoadVector(answer, tStep, mode); // in global c.s
 }
 
@@ -818,8 +843,6 @@ Beam3d :: computeBodyLoadVectorAt(FloatArray &answer, Load *load, TimeStep *tSte
 void
 Beam3d :: computeConsistentMassMatrix(FloatMatrix &answer, TimeStep *tStep, double &mass, const double *ipDensity)
 {
-    // computes mass matrix of the receiver
-
     FloatMatrix stiff;
     GaussPoint *gp = integrationRulesArray [ 0 ]->getIntegrationPoint(0);
 
@@ -991,7 +1014,9 @@ Beam3d :: giveInterface(InterfaceType interface)
 {
     if ( interface == FiberedCrossSectionInterfaceType ) {
         return static_cast< FiberedCrossSectionInterface * >( this );
-    }
+    } else if (interface == Beam3dSubsoilMaterialInterfaceType ) {
+        return static_cast< Beam3dSubsoilMaterialInterface * >( this );
+    }      
 
     return NULL;
 }
@@ -1060,4 +1085,34 @@ void Beam3d :: drawDeformedGeometry(oofegGraphicContext &gc, TimeStep *tStep, Un
     EMAddGraphicsToModel(ESIModel(), go);
 }
 #endif
+
+void
+Beam3d :: computeSubSoilNMatrixAt(GaussPoint *gp, FloatMatrix &answer)
+{
+  // only winkler model supported now (passing only unknown interpolation)
+  this->computeNmatrixAt(gp->giveNaturalCoordinates(), answer);
+}
+
+
+void
+Beam3d :: computeSubSoilStiffnessMatrix(FloatMatrix &answer,
+					       MatResponseMode rMode, TimeStep *tStep)
+{
+
+  double l = this->computeLength();
+  FloatMatrix N, DN, d;
+    answer.clear();
+    for ( GaussPoint *gp: *this->giveDefaultIntegrationRulePtr() ) {
+        this->computeSubSoilNMatrixAt(gp, N);
+	((StructuralMaterial*)this->domain->giveMaterial(subsoilMat))->give3dBeamSubSoilStiffMtrx(d, rMode, gp, tStep);
+        double dV = gp->giveWeight() * 0.5 * l;
+        DN.beProductOf(d, N);
+        answer.plusProductSymmUpper(N, DN, dV);
+    }
+    answer.symmetrized();
+}
+
+
+
+
 } // end namespace oofem

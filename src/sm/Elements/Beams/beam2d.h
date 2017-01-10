@@ -123,6 +123,15 @@ public:
         }
     }
 
+    virtual void giveBoundaryLocationArray(IntArray &locationArray, const IntArray &bNodes, const UnknownNumberingScheme &s, IntArray *dofIds = NULL) {
+      giveLocationArray (locationArray, s, dofIds);
+    }
+     
+    virtual void giveBoundaryLocationArray(IntArray &locationArray, const IntArray &bNodes, const IntArray &dofIDMask, const UnknownNumberingScheme &s, IntArray *dofIds = NULL) {
+      giveLocationArray (locationArray, dofIDMask, s, dofIds);
+    }
+    
+
     virtual double computeVolumeAround(GaussPoint *gp);
     virtual void  printOutputAt(FILE *file, TimeStep *tStep);
 
@@ -155,14 +164,9 @@ protected:
     double giveKappaCoeff(TimeStep *tStep);
     virtual double computeLength();
     double givePitch();
-    virtual void computeClampedStiffnessMatrix(FloatMatrix &answer,
-                                               MatResponseMode rMode, TimeStep *tStep);
-    virtual void computeLocalStiffnessMatrix(FloatMatrix &answer,
-                                             MatResponseMode rMode, TimeStep *tStep);
     virtual void computeGaussPoints();
     virtual MaterialMode giveMaterialMode() { return _2dBeam; }
     virtual int giveNumberOfIPForMassMtrxIntegration() { return 4; }
-
 
     bool hasDofs2Condense() { return ( ghostNodes [ 0 ] || ghostNodes [ 1 ] ); }
 };

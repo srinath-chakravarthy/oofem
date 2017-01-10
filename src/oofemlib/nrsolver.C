@@ -91,7 +91,7 @@ NRSolver :: NRSolver(Domain *d, EngngModel *m) :
     smConstraintVersion = 0;
     mCalcStiffBeforeRes = true;
 
-    maxIncAllowed = 1.0e10;
+    maxIncAllowed = 1.0e20;
 }
 
 
@@ -190,7 +190,7 @@ NRSolver :: initializeFrom(InputRecord *ir)
         FloatArray forces;
         IR_GIVE_FIELD(ir, forces, _IFT_NRSolver_forceScale);
         IR_GIVE_FIELD(ir, dofs, _IFT_NRSolver_forceScaleDofs);
-        for ( int i = 0; i <= dofs.giveSize(); ++i ) {
+        for ( int i = 0; i < dofs.giveSize(); ++i ) {
             dg_forceScale[dofs[i]] = forces[i];
         }
     }
@@ -304,6 +304,11 @@ NRSolver :: solve(SparseMtrx &k, FloatArray &R, FloatArray *R0, FloatArray *iR,
             R.zero();
             ddX = rhs;
         } else {
+
+//            if ( engngModel->giveProblemScale() == macroScale ) {
+//            	k.writeToFile("k.txt");
+//            }
+
             linSolver->solve(k, rhs, ddX);
         }
 
@@ -335,7 +340,7 @@ NRSolver :: solve(SparseMtrx &k, FloatArray &R, FloatArray *R0, FloatArray *iR,
         }
 
         if(maxInc > maxIncAllowed) {
-        	printf("Restricting increment.\n");
+        	printf("Restricting increment. maxInc: %e\n", maxInc);
         	ddX.times(maxIncAllowed/maxInc);
         }
 
@@ -401,7 +406,7 @@ NRSolver :: giveLinearSolver()
 
     linSolver.reset( classFactory.createSparseLinSolver(solverType, domain, engngModel) );
     if ( !linSolver ) {
-        OOFEM_ERROR("linear solver creation failed for type %d", solverType);
+        OOFEM_ERROR("linear solver creation failed for lstype %d", solverType);
     }
 
     return linSolver.get();
@@ -715,17 +720,28 @@ NRSolver :: checkConvergence(FloatArray &RT, FloatArray &F, FloatArray &rhs,  Fl
         parallel_context->accumulate(dg_totalDisp,      collectiveErr);
         dg_totalDisp      = collectiveErr;
 
-        OOFEM_LOG_INFO("NRSolver: %-5d", nite);
+        if ( engngModel->giveProblemScale() == macroScale ) {
+        	OOFEM_LOG_INFO("NRSolver: %-5d", nite);
+        }
+
+        int maxNumPrintouts = 6;
+        int numPrintouts = 0;
+
         //bool zeroNorm = false;
         // loop over dof groups and check convergence individually
         for ( int dg = 1; dg <= nccdg; dg++ ) {
+
             bool zeroFNorm = false, zeroDNorm = false;
             // Skips the ones which aren't used in this problem (the residual will be zero for these anyway, but it is annoying to print them all)
             if ( !idsInUse.at(dg) ) {
                 continue;
             }
 
-            OOFEM_LOG_INFO( "  %s:", __DofIDItemToString( ( DofIDItem ) dg ).c_str() );
+        	numPrintouts++;
+
+            if ( engngModel->giveProblemScale() == macroScale && numPrintouts <= maxNumPrintouts) {
+            	OOFEM_LOG_INFO( "  %s:", __DofIDItemToString( ( DofIDItem ) dg ).c_str() );
+            }
 
             if ( rtolf.at(1) > 0.0 ) {
                 //  compute a relative error norm
@@ -747,7 +763,10 @@ NRSolver :: checkConvergence(FloatArray &RT, FloatArray &F, FloatArray &rhs,  Fl
                 if ( forceErr > rtolf.at(1) ) {
                     answer = false;
                 }
-                OOFEM_LOG_INFO(zeroFNorm ? " *%.3e" : "  %.3e", forceErr);
+
+                if ( engngModel->giveProblemScale() == macroScale  && numPrintouts <= maxNumPrintouts) {
+                	OOFEM_LOG_INFO(zeroFNorm ? " *%.3e" : "  %.3e", forceErr);
+                }
 
                 // Store the errors from the current iteration
                 if ( this->constrainedNRFlag ) {
@@ -771,10 +790,18 @@ NRSolver :: checkConvergence(FloatArray &RT, FloatArray &F, FloatArray &rhs,  Fl
                 if ( dispErr > rtold.at(1) ) {
                     answer = false;
                 }
-                OOFEM_LOG_INFO(zeroDNorm ? " *%.3e" : "  %.3e", dispErr);
+
+                if ( engngModel->giveProblemScale() == macroScale  && numPrintouts <= maxNumPrintouts) {
+                	OOFEM_LOG_INFO(zeroDNorm ? " *%.3e" : "  %.3e", dispErr);
+                }
             }
         }
-        OOFEM_LOG_INFO("\n");
+
+
+        if ( engngModel->giveProblemScale() == macroScale ) {
+        	OOFEM_LOG_INFO("\n");
+        }
+
         //if ( zeroNorm ) OOFEM_WARNING("Had to resort to absolute error measure (marked by *)");
     } else { // No dof grouping
         double dXX, dXdX;
@@ -782,7 +809,7 @@ NRSolver :: checkConvergence(FloatArray &RT, FloatArray &F, FloatArray &rhs,  Fl
         if ( engngModel->giveProblemScale() == macroScale ) {
             OOFEM_LOG_INFO("NRSolver:     %-15d", nite);
         } else {
-            OOFEM_LOG_INFO("  NRSolver:     %-15d", nite);
+//            OOFEM_LOG_INFO("  NRSolver:     %-15d", nite);
         }
 
 
@@ -806,7 +833,10 @@ NRSolver :: checkConvergence(FloatArray &RT, FloatArray &F, FloatArray &rhs,  Fl
             if ( fabs(forceErr) > rtolf.at(1) ) {
                 answer = false;
             }
-            OOFEM_LOG_INFO(" %-15e", forceErr);
+
+            if ( engngModel->giveProblemScale() == macroScale ) {
+            	OOFEM_LOG_INFO(" %-15e", forceErr);
+            }
 
             if ( this->constrainedNRFlag ) {
                 // store the errors from the current iteration for use in the next
@@ -828,10 +858,15 @@ NRSolver :: checkConvergence(FloatArray &RT, FloatArray &F, FloatArray &rhs,  Fl
             if ( fabs(dispErr)  > rtold.at(1) ) {
                 answer = false;
             }
-            OOFEM_LOG_INFO(" %-15e", dispErr);
+
+            if ( engngModel->giveProblemScale() == macroScale ) {
+            	OOFEM_LOG_INFO(" %-15e", dispErr);
+            }
         }
 
-        OOFEM_LOG_INFO("\n");
+        if ( engngModel->giveProblemScale() == macroScale ) {
+        	OOFEM_LOG_INFO("\n");
+        }
     } // end default case (all dofs contributing)
 
     return answer;

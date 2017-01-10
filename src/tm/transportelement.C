@@ -51,6 +51,11 @@
 #include "feinterpol3d.h"
 #include "dof.h"
 #include "stationarytransportproblem.h"
+#include "function.h"
+#ifdef __CEMHYD_MODULE
+ #include "cemhyd/cemhydmat.h"
+#endif
+
 
 #ifdef __OOFEG
  #include "oofeggraphiccontext.h"
@@ -95,7 +100,7 @@ TransportElement :: giveCharacteristicMatrix(FloatMatrix &answer,
     if ( mtrx == TangentStiffnessMatrix ) {
         FloatMatrix tmp;
         this->computeConductivityMatrix(answer, Conductivity, tStep);
-        this->computeBCMtrxAt(tmp, tStep, VM_Total);
+        this->computeBCMtrxAt(tmp, tStep, VM_TotalIntrinsic);
         answer.add(tmp);
     } else if ( mtrx == ConductivityMatrix ) {
         this->computeConductivityMatrix(answer, Conductivity, tStep);
@@ -338,7 +343,7 @@ TransportElement :: computeCapacitySubMatrix(FloatMatrix &answer, MatResponseMod
     TransportMaterial *mat = static_cast< TransportMaterial * >( this->giveMaterial() );
 
     answer.clear();
-    for ( GaussPoint *gp: *integrationRulesArray [ iri ] ) {
+    for ( auto &gp: *integrationRulesArray [ iri ] ) {
         this->computeNAt( n, gp->giveNaturalCoordinates() );
         // ask for capacity coefficient. In basic units [J/K/m3]
         double c = mat->giveCharacteristicValue(rmode, gp, tStep);
@@ -352,15 +357,14 @@ TransportElement :: computeCapacitySubMatrix(FloatMatrix &answer, MatResponseMod
 void
 TransportElement :: computeConductivitySubMatrix(FloatMatrix &answer, int iri, MatResponseMode rmode, TimeStep *tStep)
 {
-    double dV;
     FloatMatrix b, d, db;
 
     answer.resize( this->giveNumberOfDofManagers(), this->giveNumberOfDofManagers() );
     answer.zero();
-    for ( GaussPoint *gp: *integrationRulesArray [ iri ] ) {
+    for ( auto &gp: *integrationRulesArray [ iri ] ) {
         this->computeConstitutiveMatrixAt(d, rmode, gp, tStep);
         this->computeGradientMatrixAt(b, gp->giveNaturalCoordinates());
-        dV = this->computeVolumeAround(gp);
+        double dV = this->computeVolumeAround(gp);
 
         db.beProductOf(d, b);
         answer.plusProductSymmUpper(b, db, dV);
@@ -385,7 +389,7 @@ TransportElement :: computeInternalSourceRhsSubVectorAt(FloatArray &answer, Time
 
     // add internal source produced by material (if any)
     if ( mat->hasInternalSource() ) {
-        for ( GaussPoint *gp: *this->giveDefaultIntegrationRulePtr() ) {
+        for ( auto &gp: *this->giveDefaultIntegrationRulePtr() ) {
             this->computeNAt( n, gp->giveNaturalCoordinates() );
             double dV = this->computeVolumeAround(gp);
             mat->computeInternalSourceVector(val, gp, tStep, mode);
@@ -462,7 +466,7 @@ TransportElement :: computeIntSourceLHSSubMatrix(FloatMatrix &answer, MatRespons
     TransportMaterial *mat = static_cast< TransportMaterial * >( this->giveMaterial() );
 
     answer.clear();
-    for ( GaussPoint *gp: *integrationRulesArray [ iri ] ) {
+    for ( auto &gp: *integrationRulesArray [ iri ] ) {
         this->computeNAt( n, gp->giveNaturalCoordinates() );
         // ask for coefficient from material
         double c = mat->giveCharacteristicValue(rmode, gp, tStep);
@@ -486,14 +490,14 @@ void
 TransportElement :: computeInternalForcesVector(FloatArray &answer, TimeStep *tStep)
 {
     FloatArray unknowns;
-    this->computeVectorOf(VM_Total, tStep, unknowns);
+    this->computeVectorOf(VM_TotalIntrinsic, tStep, unknowns);
 
     TransportMaterial *mat = static_cast< TransportMaterial* >( this->giveMaterial() );
     FloatArray flux, grad, field;
     FloatMatrix B, N;
 
     answer.clear();
-    for ( GaussPoint *gp: *integrationRulesArray [ 0 ] ) {
+    for ( auto &gp: *integrationRulesArray [ 0 ] ) {
         const FloatArray &lcoords = gp->giveNaturalCoordinates();
 
         this->computeNmatrixAt(N, lcoords);
@@ -511,7 +515,7 @@ TransportElement :: computeInternalForcesVector(FloatArray &answer, TimeStep *tS
         if ( mat->hasInternalSource() ) {
             // add internal source produced by material (if any)
             FloatArray val;
-            mat->computeInternalSourceVector(val, gp, tStep, VM_Total);
+            mat->computeInternalSourceVector(val, gp, tStep, VM_TotalIntrinsic);
             answer.plusProduct(N, val, -dV);
         }
     }
@@ -519,7 +523,7 @@ TransportElement :: computeInternalForcesVector(FloatArray &answer, TimeStep *tS
     ///@todo With sets, we can make this much nicer than to add it here, though it works for now. / Mikael
     // Neumann b.c.s
     FloatMatrix bc_tangent;
-    this->computeBCMtrxAt(bc_tangent, tStep, VM_Total);
+    this->computeBCMtrxAt(bc_tangent, tStep, VM_TotalIntrinsic);
     if ( bc_tangent.isNotEmpty() ) {
         answer.plusProduct(bc_tangent, unknowns, 1.0);
     }
@@ -580,15 +584,13 @@ TransportElement :: computeLoadVector(FloatArray &answer, Load *load, CharType t
 
     ///@todo Deal with coupled fields (I think they should be another class of problems completely).
     FEInterpolation *interp = this->giveInterpolation();
-    //std :: unique_ptr< IntegrationRule > iRule( interp->giveIntegrationRule( load->giveApproxOrder() + 1 + interp->giveInterpolationOrder() ) );
-    ///@todo FIXME backwards compatibility, the old tests used insufficient integration points for axisymm elements.
-    std :: unique_ptr< IntegrationRule > iRule( interp->giveIntegrationRule( load->giveApproxOrder() ) );
+    std :: unique_ptr< IntegrationRule > iRule( interp->giveIntegrationRule( load->giveApproxOrder() + 1 + interp->giveInterpolationOrder()) );
 
     if ( load->giveType() == ConvectionBC || load->giveType() == RadiationBC ) {
-        this->computeVectorOf(dofid, VM_Total, tStep, unknowns);
+        this->computeVectorOf(dofid, VM_TotalIntrinsic, tStep, unknowns);
     }
 
-    for ( GaussPoint *gp: *iRule ) {
+    for ( auto &gp: *iRule ) {
         const FloatArray &lcoords = gp->giveNaturalCoordinates();
 
         interp->evalN( n, lcoords, FEIElementGeometryWrapper(this) );
@@ -633,10 +635,10 @@ TransportElement :: computeBoundaryLoadVector(FloatArray &answer, BoundaryLoad *
     if ( load->giveType() == ConvectionBC || load->giveType() == RadiationBC ) {
         IntArray bNodes;
         interp->boundaryGiveNodes(bNodes, boundary);
-        this->computeBoundaryVectorOf(bNodes, dofid, VM_Total, tStep, unknowns);
+        this->computeBoundaryVectorOf(bNodes, dofid, VM_TotalIntrinsic, tStep, unknowns);
     }
 
-    for ( GaussPoint *gp: *iRule ) {
+    for ( auto &gp: *iRule ) {
         const FloatArray &lcoords = gp->giveNaturalCoordinates();
 
         interp->boundaryEvalN( n, boundary, lcoords, FEIElementGeometryWrapper(this) );
@@ -646,7 +648,11 @@ TransportElement :: computeBoundaryLoadVector(FloatArray &answer, BoundaryLoad *
         double detJ = interp->boundaryGiveTransformationJacobian( boundary, lcoords, FEIElementGeometryWrapper(this) );
         double dA = this->giveThicknessAt(gcoords) * gp->giveWeight() * detJ;
 
-        if ( load->giveFormulationType() == Load :: FT_Entity ) {
+        //Check external ambient temperature field first
+        FieldPtr tf;
+        if (tf = domain->giveEngngModel()->giveContext()->giveFieldManager()->giveField(FT_TemperatureAmbient)){
+            tf->evaluateAt(val, gcoords, VM_TotalIntrinsic, tStep);
+        } else if ( load->giveFormulationType() == Load :: FT_Entity ) {
             load->computeValueAt(val, tStep, lcoords, mode);
         } else {
             load->computeValueAt(val, tStep, gcoords, mode);
@@ -657,7 +663,16 @@ TransportElement :: computeBoundaryLoadVector(FloatArray &answer, BoundaryLoad *
         } else if ( load->giveType() == ConvectionBC ) {
             field.beProductOf(N, unknowns);
             val.subtract(field);
-            val.times( -1.0 * load->giveProperty('a', tStep) );
+            double a;
+            if ( load->propertyMultExpr.isDefined() ) {
+                if ( unknownsPerNode != 1 ) {
+                    OOFEM_ERROR("Not implemented for >=2 coupled fields");
+                }
+                a = load->giveProperty('a', tStep, { { "u", field.at(1) } });
+            } else {
+                a = load->giveProperty('a', tStep);
+            }
+            val.times( -1.0 * a );
         } else if ( load->giveType() == RadiationBC ) {
             field.beProductOf(N, unknowns);
             val.subtract(field);
@@ -678,13 +693,23 @@ TransportElement :: computeTangentFromBoundaryLoad(FloatMatrix &answer, Boundary
         return;
     }
 
-    FloatArray gcoords, n;
+    FloatArray gcoords, n, unknowns;
     FloatMatrix N;
     int unknownsPerNode = this->emode == HeatMass1TransferEM ? 2 : 1;
 
     ///@todo Deal with coupled fields (I think they should be another class of problems completely).
     FEInterpolation *interp = this->giveInterpolation();
     std :: unique_ptr< IntegrationRule > iRule( interp->giveBoundaryIntegrationRule(load->giveApproxOrder() + 1 + interp->giveInterpolationOrder(), boundary) );
+
+    if ( load->propertyMultExpr.isDefined() ) {
+        if ( unknownsPerNode != 1 ) {
+            OOFEM_ERROR("Load property multexpr not implemented for coupled fields");
+        }
+        IntArray dofid, bNodes;
+        interp->boundaryGiveNodes(bNodes, boundary);
+        this->giveElementDofIDMask(dofid);
+        this->computeBoundaryVectorOf(bNodes, dofid, VM_TotalIntrinsic, tStep, unknowns);
+    }
 
     for ( auto &gp : *iRule ) {
         const FloatArray &lcoords = gp->giveNaturalCoordinates();
@@ -696,7 +721,14 @@ TransportElement :: computeTangentFromBoundaryLoad(FloatMatrix &answer, Boundary
         N.beNMatrixOf(n, unknownsPerNode);
 
         if ( load->giveType() == ConvectionBC ){
-            answer.plusProductSymmUpper(N, N, load->giveProperty('a', tStep) * dA);
+            double a;
+            if ( load->propertyMultExpr.isDefined() ) {
+                double value = n.dotProduct(unknowns);
+                a = load->giveProperty('a', tStep, { { "u", value } });
+            } else {
+                a = load->giveProperty('a', tStep);
+            }
+            answer.plusProductSymmUpper(N, N, a * dA);
         } else if ( load->giveType() == RadiationBC ){
             answer.plusProductSymmUpper(N, N, getRadiativeHeatTranferCoef(load, tStep) * dA);
         }
@@ -708,6 +740,7 @@ TransportElement :: computeTangentFromBoundaryLoad(FloatMatrix &answer, Boundary
 void
 TransportElement :: computeBoundaryEdgeLoadVector(FloatArray &answer, BoundaryLoad *load, int boundary, CharType type, ValueModeType mode, TimeStep *tStep)
 {
+    ///@todo Very similar to function computeBoundaryLoadVector and computeEdgeBCSubVectorAt. They should be all merged together.
     answer.clear();
 
     if ( !( load->giveType() == TransmissionBC && type == ExternalForcesVector ) &&
@@ -732,11 +765,11 @@ TransportElement :: computeBoundaryEdgeLoadVector(FloatArray &answer, BoundaryLo
 
     if ( load->giveType() == ConvectionBC || load->giveType() == RadiationBC ) {
         IntArray bNodes;
-        interp->boundaryGiveNodes(bNodes, boundary);
-        this->computeBoundaryVectorOf(bNodes, dofid, VM_Total, tStep, unknowns);
+        interp->boundaryEdgeGiveNodes(bNodes, boundary);
+        this->computeBoundaryVectorOf(bNodes, dofid, VM_TotalIntrinsic, tStep, unknowns);
     }
 
-    for ( GaussPoint *gp: *iRule ) {
+    for ( auto &gp: *iRule ) {
         const FloatArray &lcoords = gp->giveNaturalCoordinates();
 
         interp->boundaryEdgeEvalN( n, boundary, lcoords, FEIElementGeometryWrapper(this) );
@@ -744,9 +777,12 @@ TransportElement :: computeBoundaryEdgeLoadVector(FloatArray &answer, BoundaryLo
 
         double detJ = interp->boundaryEdgeGiveTransformationJacobian( boundary, lcoords, FEIElementGeometryWrapper(this) );
         interp->boundaryEdgeLocal2Global( gcoords, boundary, lcoords, FEIElementGeometryWrapper(this) );
-        double dL = this->giveThicknessAt(gcoords) * gp->giveWeight() * detJ;
+        double dL = gp->giveWeight() * detJ;
 
-        if ( load->giveFormulationType() == Load :: FT_Entity ) {
+        FieldPtr tf;
+        if (tf = domain->giveEngngModel()->giveContext()->giveFieldManager()->giveField(FT_TemperatureAmbient)){
+            tf->evaluateAt(val, gcoords, VM_TotalIntrinsic, tStep);
+        } else if ( load->giveFormulationType() == Load :: FT_Entity ) {
             load->computeValueAt(val, tStep, lcoords, mode);
         } else {
             load->computeValueAt(val, tStep, gcoords, mode);
@@ -757,7 +793,16 @@ TransportElement :: computeBoundaryEdgeLoadVector(FloatArray &answer, BoundaryLo
         } else if ( load->giveType() == ConvectionBC ) {
             field.beProductOf(N, unknowns);
             val.subtract(field);
-            val.times( -1.0 * load->giveProperty('a', tStep) );
+            double a;
+            if ( load->propertyMultExpr.isDefined() ) {
+                if ( unknownsPerNode != 1 ) {
+                    OOFEM_ERROR("Not implemented for >=2 coupled fields");
+                }
+                a = load->giveProperty('a', tStep, { { "u", field.at(1) } });
+            } else {
+                a = load->giveProperty('a', tStep);
+            }
+            val.times( -1.0 * a );
         } else if ( load->giveType() == RadiationBC  ) {
             //actual Temperature in C in field
             field.beProductOf(N, unknowns);
@@ -889,7 +934,7 @@ TransportElement :: computeEdgeBCSubVectorAt(FloatArray &answer, Load *load, int
         BoundaryLoad *edgeLoad = static_cast< BoundaryLoad * >(load);
 
         int approxOrder = edgeLoad->giveApproxOrder() + this->giveApproxOrder(indx);
-        int numberOfEdgeIPs = ( int ) ceil( ( approxOrder + 1. ) / 2. );
+        int numberOfEdgeIPs = ( int ) ceil( ( approxOrder + 1.0 ) / 2. );
         GaussIntegrationRule iRule(1, this, 1, 1);
         iRule.SetUpPointsOnLine(numberOfEdgeIPs, _Unknown);
         FloatArray reducedAnswer, val, n;
@@ -897,24 +942,25 @@ TransportElement :: computeEdgeBCSubVectorAt(FloatArray &answer, Load *load, int
         double dV, coeff = 1.0;
 
         for ( GaussPoint *gp: iRule ) {
-            if( edgeLoad->propertyMultExpr.isDefined()) {//dependence on state variable
-                ///@todo Deal with coupled fields
-                if ( emode!=HeatTransferEM && emode!=Mass1TransferEM ){
-                    OOFEM_ERROR("Not implemented for >=2 coupled fields");
-                }
-                FloatArray unknowns;
-                IntArray dofid;
-                this->computeEgdeNAt( n, iEdge, gp->giveNaturalCoordinates() );
-                this->giveElementDofIDMask(dofid);
-                this->giveEdgeDofMapping(mask, iEdge);
-                this->computeBoundaryVectorOf(mask, dofid, VM_Total, tStep, unknowns);
-                double value = n.dotProduct(unknowns);//unknown in IP
-                edgeLoad->setVariableState('x', value);
-            }
             if ( load->giveType() == TransmissionBC ) {
                 coeff = -1.0;
             } else if ( load->giveType() == ConvectionBC ) {
-                coeff = edgeLoad->giveProperty('a', tStep);
+                if( edgeLoad->propertyMultExpr.isDefined()) {//dependence on state variable
+                    ///@todo Deal with coupled fields
+                    if ( emode!=HeatTransferEM && emode!=Mass1TransferEM ){
+                        OOFEM_ERROR("Not implemented for >=2 coupled fields");
+                    }
+                    FloatArray unknowns;
+                    IntArray dofid;
+                    this->computeEgdeNAt( n, iEdge, gp->giveNaturalCoordinates() );
+                    this->giveElementDofIDMask(dofid);
+                    this->giveEdgeDofMapping(mask, iEdge);
+                    this->computeBoundaryVectorOf(mask, dofid, VM_TotalIntrinsic, tStep, unknowns);
+                    double value = n.dotProduct(unknowns);
+                    coeff = edgeLoad->giveProperty('a', tStep, { { "u", value } });
+                } else {
+                    coeff = edgeLoad->giveProperty('a', tStep);
+                }
             } else if ( load->giveType() == RadiationBC ){
                 coeff = getRadiativeHeatTranferCoef(edgeLoad, tStep);
             }
@@ -923,12 +969,16 @@ TransportElement :: computeEdgeBCSubVectorAt(FloatArray &answer, Load *load, int
             this->computeEgdeNAt(n, iEdge, lcoords);
             dV = this->computeEdgeVolumeAround(gp, iEdge);
 
-            if ( edgeLoad->giveFormulationType() == Load :: FT_Entity ) {
+            FieldPtr tf;
+            FloatArray gcoords;
+            if (tf = domain->giveEngngModel()->giveContext()->giveFieldManager()->giveField(FT_TemperatureAmbient)){
+                this->computeEdgeIpGlobalCoords(gcoords, lcoords, iEdge);
+                tf->evaluateAt(val, gcoords, VM_TotalIntrinsic, tStep);
+            } else if ( edgeLoad->giveFormulationType() == Load :: FT_Entity ) {
                 edgeLoad->computeValueAt(val, tStep, lcoords, mode);
             } else {
-                FloatArray globalIPcoords;
-                this->computeEdgeIpGlobalCoords(globalIPcoords, lcoords, iEdge);
-                edgeLoad->computeValueAt(val, tStep, globalIPcoords, mode);
+                this->computeEdgeIpGlobalCoords(gcoords, lcoords, iEdge);
+                edgeLoad->computeValueAt(val, tStep, gcoords, mode);
             }
 
             reducedAnswer.add(val.at(indx) * coeff * dV, n);
@@ -952,7 +1002,7 @@ TransportElement :: computeSurfaceBCSubVectorAt(FloatArray &answer, Load *load,
 
     BoundaryLoad *surfLoad = dynamic_cast< BoundaryLoad * >(load);
     if ( surfLoad ) {
-        FloatArray reducedAnswer, val, globalIPcoords, n;
+        FloatArray reducedAnswer, val, gcoords, n;
         IntArray mask;
 
         answer.resize( this->giveNumberOfDofManagers() );
@@ -963,8 +1013,11 @@ TransportElement :: computeSurfaceBCSubVectorAt(FloatArray &answer, Load *load,
 
         std :: unique_ptr< IntegrationRule > iRule( this->GetSurfaceIntegrationRule(approxOrder) );
         for ( GaussPoint *gp: *iRule ) {
-            if( surfLoad->propertyMultExpr.isDefined()) {//dependence on state variable
-                    if ( emode!=HeatTransferEM && emode!=Mass1TransferEM ){
+            if ( load->giveType() == TransmissionBC ) {
+                coeff = -1.0;
+            } else if ( load->giveType() == ConvectionBC ) {
+                if ( surfLoad->propertyMultExpr.isDefined() ) {
+                    if ( emode != HeatTransferEM && emode != Mass1TransferEM ) {
                         ///@todo Deal with coupled fields
                         OOFEM_ERROR("Not implemented for >=2 coupled fields");
                     }
@@ -973,14 +1026,12 @@ TransportElement :: computeSurfaceBCSubVectorAt(FloatArray &answer, Load *load,
                     this->computeSurfaceNAt( n, iSurf, gp->giveNaturalCoordinates() );
                     this->giveElementDofIDMask(dofid);
                     this->giveSurfaceDofMapping(mask, iSurf);
-                    this->computeBoundaryVectorOf(mask, dofid, VM_Total, tStep, unknowns);
-                    double value = n.dotProduct(unknowns);//unknown in IP
-                    surfLoad->setVariableState('x', value);
+                    this->computeBoundaryVectorOf(mask, dofid, VM_TotalIntrinsic, tStep, unknowns);
+                    double value = n.dotProduct(unknowns);
+                    coeff = surfLoad->giveProperty('a', tStep, { { "u", value } });
+                } else {
+                    coeff = surfLoad->giveProperty('a', tStep);
                 }
-            if ( load->giveType() == TransmissionBC ) {
-                coeff = -1.0;
-            } else if ( load->giveType() == ConvectionBC ) {
-                coeff = surfLoad->giveProperty('a', tStep);
             } else if ( load->giveType() == RadiationBC ) {
                 coeff = getRadiativeHeatTranferCoef(surfLoad, tStep);
             } else {
@@ -990,11 +1041,15 @@ TransportElement :: computeSurfaceBCSubVectorAt(FloatArray &answer, Load *load,
             this->computeSurfaceNAt( n, iSurf, gp->giveNaturalCoordinates() );
             double dV = this->computeSurfaceVolumeAround(gp, iSurf);
 
-            if ( surfLoad->giveFormulationType() == Load :: FT_Entity ) {
+            FieldPtr tf;
+            if (tf = domain->giveEngngModel()->giveContext()->giveFieldManager()->giveField(FT_TemperatureAmbient)){
+                this->computeSurfIpGlobalCoords(gcoords, gp->giveNaturalCoordinates(), iSurf);
+                tf->evaluateAt(val, gcoords, VM_TotalIntrinsic, tStep);
+            } else if ( surfLoad->giveFormulationType() == Load :: FT_Entity ) {
                 surfLoad->computeValueAt(val, tStep, gp->giveNaturalCoordinates(), mode);
             } else {
-                this->computeSurfIpGlobalCoords(globalIPcoords, gp->giveNaturalCoordinates(), iSurf);
-                surfLoad->computeValueAt(val, tStep, globalIPcoords, mode);
+                this->computeSurfIpGlobalCoords(gcoords, gp->giveNaturalCoordinates(), iSurf);
+                surfLoad->computeValueAt(val, tStep, gcoords, mode);
             }
 
             reducedAnswer.add(val.at(indx) * coeff * dV, n);
@@ -1039,24 +1094,27 @@ TransportElement :: computeBCSubMtrxAt(FloatMatrix &answer, TimeStep *tStep, Val
                 IntArray mask;
                 FloatMatrix subAnswer;
 
-                for ( GaussPoint *gp: iRule ) {
+                for ( auto &gp: iRule ) {
                     this->computeEgdeNAt( n, id, gp->giveNaturalCoordinates() );
                     double dV = this->computeEdgeVolumeAround(gp, id);
-                    if( edgeLoad->propertyMultExpr.isDefined()) {//dependence on state variable
-                        if ( emode!=HeatTransferEM && emode!=Mass1TransferEM ){
-                            ///@todo Deal with coupled fields
-                            OOFEM_ERROR("Not implemented for >=2 coupled fields");
-                        }
-                        FloatArray unknowns;
-                        IntArray dofid;
-                        this->giveElementDofIDMask(dofid);
-                        this->giveEdgeDofMapping(mask, id);
-                        this->computeBoundaryVectorOf(mask, dofid, VM_Total, tStep, unknowns);
-                        double value = n.dotProduct(unknowns);//unknown in IP
-                        edgeLoad->setVariableState('x', value);
-                    }
                     if ( load->giveType() == ConvectionBC ) {
-                        subAnswer.plusDyadSymmUpper( n, dV * edgeLoad->giveProperty('a', tStep) );
+                        double a;
+                        if( edgeLoad->propertyMultExpr.isDefined() ) {
+                            if ( emode != HeatTransferEM && emode != Mass1TransferEM ) {
+                                ///@todo Deal with coupled fields
+                                OOFEM_ERROR("Not implemented for >=2 coupled fields");
+                            }
+                            FloatArray unknowns;
+                            IntArray dofid;
+                            this->giveElementDofIDMask(dofid);
+                            this->giveEdgeDofMapping(mask, id);
+                            this->computeBoundaryVectorOf(mask, dofid, VM_TotalIntrinsic, tStep, unknowns);
+                            double value = n.dotProduct(unknowns);//unknown in IP
+                            a = edgeLoad->giveProperty('a', tStep, { { "u", value } });
+                        } else {
+                            a = edgeLoad->giveProperty('a', tStep);
+                        }
+                        subAnswer.plusDyadSymmUpper( n, dV * a );
                     } else if ( load->giveType() == RadiationBC ) {
                         subAnswer.plusDyadSymmUpper( n, dV * getRadiativeHeatTranferCoef(edgeLoad, tStep) );
                     }
@@ -1079,24 +1137,27 @@ TransportElement :: computeBCSubMtrxAt(FloatMatrix &answer, TimeStep *tStep, Val
                 int approxOrder = 2 * this->giveApproxOrder(indx);
                 std :: unique_ptr< IntegrationRule > iRule( this->GetSurfaceIntegrationRule(approxOrder) );
 
-                for ( GaussPoint *gp: *iRule ) {
+                for ( auto &gp: *iRule ) {
                     this->computeSurfaceNAt( n, id, gp->giveNaturalCoordinates() );
                     double dV = this->computeSurfaceVolumeAround(gp, id);
-                    if( surfLoad->propertyMultExpr.isDefined()) {//dependence on state variable
-                        if ( emode!=HeatTransferEM && emode!=Mass1TransferEM ){
-                            ///@todo Deal with coupled fields
-                            OOFEM_ERROR("Not implemented for >=2 coupled fields");
-                        }
-                        FloatArray unknowns;
-                        IntArray dofid;
-                        this->giveElementDofIDMask(dofid);
-                        this->giveSurfaceDofMapping(mask, id);
-                        this->computeBoundaryVectorOf(mask, dofid, VM_Total, tStep, unknowns);
-                        double value = n.dotProduct(unknowns);//unknown in IP
-                        surfLoad->setVariableState('x', value);
-                    }
                     if ( load->giveType() == ConvectionBC ) {
-                        subAnswer.plusDyadSymmUpper( n, dV * surfLoad->giveProperty('a', tStep) );
+                        double a;
+                        if ( surfLoad->propertyMultExpr.isDefined() ) {
+                            if ( emode != HeatTransferEM && emode != Mass1TransferEM ) {
+                                ///@todo Deal with coupled fields
+                                OOFEM_ERROR("Not implemented for >=2 coupled fields");
+                            }
+                            FloatArray unknowns;
+                            IntArray dofid;
+                            this->giveElementDofIDMask(dofid);
+                            this->giveSurfaceDofMapping(mask, id);
+                            this->computeBoundaryVectorOf(mask, dofid, VM_TotalIntrinsic, tStep, unknowns);
+                            double value = n.dotProduct(unknowns);//unknown in IP
+                            a = surfLoad->giveProperty('a', tStep, { { "u", value } });
+                        } else {
+                            a = surfLoad->giveProperty('a', tStep);
+                        }
+                        subAnswer.plusDyadSymmUpper( n, dV * a );
                     } else if ( load->giveType() == RadiationBC ) {
                         subAnswer.plusDyadSymmUpper( n, dV * getRadiativeHeatTranferCoef(surfLoad, tStep) );
                     }
@@ -1153,7 +1214,7 @@ TransportElement :: getRadiativeHeatTranferCoef(BoundaryLoad *bLoad, TimeStep *t
     double answer = 0;
     ///@todo Why aren't this code using the standard approach of calling computeComponentArrayAt(...) to get the time function scaling and all?
     const FloatArray &components = bLoad->giveComponentArray();
-    
+
     answer = components.at(1);//T_infty
     answer += 273.15;
     answer = answer*answer*answer;
@@ -1180,7 +1241,7 @@ TransportElement :: computeFlow(FloatArray &answer, GaussPoint *gp, TimeStep *tS
     IntArray dofid;
 
     this->giveElementDofIDMask(dofid);
-    this->computeVectorOf(dofid, VM_Total, tStep, r);
+    this->computeVectorOf(dofid, VM_TotalIntrinsic, tStep, r);
     this->computeGradientMatrixAt(b, gp->giveNaturalCoordinates());
 
     if ( emode == HeatTransferEM ||  emode == Mass1TransferEM ) {
@@ -1237,8 +1298,15 @@ TransportElement :: updateInternalState(TimeStep *tStep)
     IntArray dofid;
     TransportMaterial *mat = static_cast< TransportMaterial * >( this->giveMaterial() );
 
+#ifdef __CEMHYD_MODULE //not very efficient here, looping over all GPs in each call
+    if (dynamic_cast< CemhydMat * >( mat ) &&  tStep->isIcApply()){
+        CemhydMat *cem = dynamic_cast< CemhydMat * >( mat );
+        cem->initMaterial(this); //create microstructures and statuses on specific GPs
+    }
+#endif //__CEMHYD_MODULE    
+    
     this->giveElementDofIDMask(dofid);
-    this->computeVectorOf(dofid, VM_Total, tStep, r);
+    this->computeVectorOf(dofid, VM_TotalIntrinsic, tStep, r);
     // force updating ip values
     for ( auto &iRule: integrationRulesArray ) {
         for ( GaussPoint *gp: *iRule ) {
@@ -1256,11 +1324,12 @@ TransportElement :: updateInternalState(TimeStep *tStep)
 #endif
         }
     }
+    
 }
 
 int
 TransportElement :: EIPrimaryFieldI_evaluateFieldVectorAt(FloatArray &answer, PrimaryField &pf,
-                                                          FloatArray &coords, IntArray &dofId, ValueModeType mode,
+                                                          const FloatArray &coords, IntArray &dofId, ValueModeType mode,
                                                           TimeStep *tStep)
 {
     int indx;

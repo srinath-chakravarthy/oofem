@@ -46,10 +46,9 @@ MaxwellChainMaterial :: MaxwellChainMaterial(int n, Domain *d) : RheoChainMateri
 
 
 void
-MaxwellChainMaterial :: computeCharCoefficients(FloatArray &answer, double tStep)
+MaxwellChainMaterial :: computeCharCoefficients(FloatArray &answer, double tPrime, GaussPoint *gp, TimeStep *tStep)
 {
-    int i, j, r, rSize;
-    double taui, tauj, sum, tti, ttj, sumRhs;
+    int rSize;
     FloatArray rhs(this->nUnits), discreteRelaxFunctionVal;
     FloatMatrix A(this->nUnits, this->nUnits);
 
@@ -62,20 +61,23 @@ MaxwellChainMaterial :: computeCharCoefficients(FloatArray &answer, double tStep
     // a direct call to the relaxation function could be used, if available
     this->computeDiscreteRelaxationFunction(discreteRelaxFunctionVal,
                                             rTimes,
-                                            tStep,
+                                            tPrime,
+                                            tPrime,
+                                            gp,
                                             tStep);
 
     // assemble the matrix of the set of linear equations
     // for computing the optimal moduli
-    for ( i = 1; i <= this->nUnits; i++ ) {
-        taui = this->giveCharTime(i);
-        for ( j = 1; j <= this->nUnits; j++ ) {
-            tauj = this->giveCharTime(j);
-            for ( sum = 0., r = 1; r <= rSize; r++ ) {
-                tti = pow( ( tStep + rTimes.at(r) ) / taui, giveCharTimeExponent(i) ) -
-                pow( tStep / taui, giveCharTimeExponent(i) );
-                ttj = pow( ( tStep + rTimes.at(r) ) / tauj, giveCharTimeExponent(j) ) -
-                pow( tStep / tauj, giveCharTimeExponent(j) );
+    for ( int i = 1; i <= this->nUnits; i++ ) {
+        double taui = this->giveCharTime(i);
+        for ( int j = 1; j <= this->nUnits; j++ ) {
+            double tauj = this->giveCharTime(j);
+            double sum = 0;
+            for ( int r = 1; r <= rSize; r++ ) {
+                double tti = pow( ( tPrime + rTimes.at(r) ) / taui, giveCharTimeExponent(i) ) -
+                             pow( tPrime / taui, giveCharTimeExponent(i) );
+                double ttj = pow( ( tPrime + rTimes.at(r) ) / tauj, giveCharTimeExponent(j) ) -
+                             pow( tPrime / tauj, giveCharTimeExponent(j) );
                 sum += exp(-tti - ttj);
             }
 
@@ -83,9 +85,10 @@ MaxwellChainMaterial :: computeCharCoefficients(FloatArray &answer, double tStep
         }
 
         // assemble rhs
-        for ( sumRhs = 0., r = 1; r <= rSize; r++ ) {
-            tti = pow( ( tStep + rTimes.at(r) ) / taui, giveCharTimeExponent(i) ) -
-            pow( tStep / taui, giveCharTimeExponent(i) );
+        double sumRhs = 0;
+        for ( int r = 1; r <= rSize; r++ ) {
+            double tti = pow( ( tPrime + rTimes.at(r) ) / taui, giveCharTimeExponent(i) ) -
+            pow( tPrime / taui, giveCharTimeExponent(i) );
             sumRhs += exp(-tti) * discreteRelaxFunctionVal.at(r);
         }
 
@@ -107,22 +110,27 @@ MaxwellChainMaterial :: giveEModulus(GaussPoint *gp, TimeStep *tStep)
      *
      * Note: time -1 refers to the previous time.
      */
-    double lambdaMu, Emu, deltaYmu;
     double E = 0.0;
 
     ///@warning THREAD UNSAFE!
-    this->updateEparModuli(relMatAge + ( tStep->giveTargetTime() - 0.5 * tStep->giveTimeIncrement() ) / timeFactor);
+
+    if (  (tStep->giveIntrinsicTime() < this->castingTime)  ) {
+      OOFEM_ERROR("Attempted to evaluate E modulus at time lower than casting time");
+    }
+
+    double tPrime = relMatAge + ( tStep->giveTargetTime() - 0.5 * tStep->giveTimeIncrement() ) / timeFactor;
+    this->updateEparModuli(tPrime, gp, tStep);
 
     for ( int mu = 1; mu <= nUnits; mu++ ) {
-        deltaYmu = tStep->giveTimeIncrement() / timeFactor / this->giveCharTime(mu);
+        double deltaYmu = tStep->giveTimeIncrement() / timeFactor / this->giveCharTime(mu);
         if ( deltaYmu <= 0.0 ) {
             deltaYmu = 1.e-3;
         }
 
         deltaYmu = pow( deltaYmu, this->giveCharTimeExponent(mu) );
 
-        lambdaMu = ( 1.0 - exp(-deltaYmu) ) / deltaYmu;
-        Emu = this->giveEparModulus(mu); // previously updated by updateEparModuli
+        double lambdaMu = ( 1.0 - exp(-deltaYmu) ) / deltaYmu;
+        double Emu = this->giveEparModulus(mu); // previously updated by updateEparModuli
         E += lambdaMu * Emu;
     }
 
@@ -140,22 +148,22 @@ MaxwellChainMaterial :: giveEigenStrainVector(FloatArray &answer,
 // (in fact, the INCREMENT of creep strain is computed for mode == VM_Incremental)
 //
 {
-    int mu;
-    double E;
-    double deltaYmu;
     FloatArray help, reducedAnswer;
-    //FloatArray *sigmaMu;
     FloatArray sigmaMu;
     FloatMatrix B;
     MaxwellChainMaterialStatus *status = static_cast< MaxwellChainMaterialStatus * >( this->giveStatus(gp) );
+
+    if (  (tStep->giveIntrinsicTime() < this->castingTime)  ) {
+      OOFEM_ERROR("Attempted to evaluate creep strain for time lower than casting time");
+    }
 
     if ( mode == VM_Incremental ) {
         this->giveUnitComplianceMatrix(B, gp, tStep);
         reducedAnswer.resize( B.giveNumberOfRows() );
         reducedAnswer.zero();
 
-        for ( mu = 1; mu <= nUnits; mu++ ) {
-            deltaYmu = tStep->giveTimeIncrement() / timeFactor / this->giveCharTime(mu);
+        for ( int mu = 1; mu <= nUnits; mu++ ) {
+            double deltaYmu = tStep->giveTimeIncrement() / timeFactor / this->giveCharTime(mu);
             deltaYmu = pow( deltaYmu, this->giveCharTimeExponent(mu) );
 
             sigmaMu  = status->giveHiddenVarsVector(mu); // JB
@@ -167,10 +175,11 @@ MaxwellChainMaterial :: giveEigenStrainVector(FloatArray &answer,
             }
         }
 
-        E = this->giveEModulus(gp, tStep);
+        double E = this->giveEModulus(gp, tStep);
+        // E = this->giveIncrementalModulus(gp, tStep);
         reducedAnswer.times(1.0 / E);
 
-        answer =  reducedAnswer;
+        answer = reducedAnswer;
     } else {
         /* error - total mode not implemented yet */
         OOFEM_ERROR("mode is not supported");
@@ -194,8 +203,6 @@ MaxwellChainMaterial :: computeHiddenVars(GaussPoint *gp, TimeStep *tStep)
     /*
      * Updates hidden variables used to effectively trace the load history
      */
-
-    double deltaYmu, Emu, lambdaMu;
     FloatArray help, deltaEps0, help1;
     FloatArray muthHiddenVarsVector;
 
@@ -216,14 +223,15 @@ MaxwellChainMaterial :: computeHiddenVars(GaussPoint *gp, TimeStep *tStep)
     help1.beProductOf(Binv, help);
 
     ///@warning THREAD UNSAFE!
-    this->updateEparModuli(relMatAge + ( tStep->giveTargetTime() - 0.5 * tStep->giveTimeIncrement() ) / timeFactor);
+    double tPrime = relMatAge + ( tStep->giveTargetTime() - 0.5 * tStep->giveTimeIncrement() ) / timeFactor;
+    this->updateEparModuli(tPrime, gp, tStep);
 
     for ( int mu = 1; mu <= nUnits; mu++ ) {
-        deltaYmu = tStep->giveTimeIncrement() / timeFactor / this->giveCharTime(mu);
+        double deltaYmu = tStep->giveTimeIncrement() / timeFactor / this->giveCharTime(mu);
         deltaYmu = pow( deltaYmu, this->giveCharTimeExponent(mu) );
 
-        lambdaMu = ( 1.0 - exp(-deltaYmu) ) / deltaYmu;
-        Emu = this->giveEparModulus(mu);
+        double lambdaMu = ( 1.0 - exp(-deltaYmu) ) / deltaYmu;
+        double Emu = this->giveEparModulus(mu);
 
         muthHiddenVarsVector = status->giveHiddenVarsVector(mu);
         help = help1;
@@ -241,9 +249,6 @@ MaxwellChainMaterial :: computeHiddenVars(GaussPoint *gp, TimeStep *tStep)
 
 MaterialStatus *
 MaxwellChainMaterial :: CreateStatus(GaussPoint *gp) const
-/*
- * creates a new material status corresponding to this class
- */
 {
     return new MaxwellChainMaterialStatus(1, this->giveDomain(), gp, nUnits);
 }

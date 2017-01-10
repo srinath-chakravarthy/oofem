@@ -462,7 +462,6 @@ SimpleCrossSection :: give2dPlateSubSoilStiffMtrx(FloatMatrix &answer, MatRespon
 }
 
 
-
 IRResultType
 SimpleCrossSection :: initializeFrom(InputRecord *ir)
 //
@@ -529,17 +528,19 @@ SimpleCrossSection :: initializeFrom(InputRecord *ir)
     this->materialNumber = 0;
     IR_GIVE_OPTIONAL_FIELD(ir, this->materialNumber, _IFT_SimpleCrossSection_MaterialNumber);
 
-    value = 0.0;
-    IR_GIVE_OPTIONAL_FIELD(ir, value, _IFT_SimpleCrossSection_directorx);
-    propertyDictionary.add(CS_DirectorVectorX, value);
+    if ( ir->hasField(_IFT_SimpleCrossSection_directorx) ) {
+        value = 0.0;
+        IR_GIVE_FIELD(ir, value, _IFT_SimpleCrossSection_directorx);
+        propertyDictionary.add(CS_DirectorVectorX, value);
 
-    value = 0.0;
-    IR_GIVE_OPTIONAL_FIELD(ir, value, _IFT_SimpleCrossSection_directory);
-    propertyDictionary.add(CS_DirectorVectorY, value);
+        value = 0.0;
+        IR_GIVE_OPTIONAL_FIELD(ir, value, _IFT_SimpleCrossSection_directory);
+        propertyDictionary.add(CS_DirectorVectorY, value);
 
-    value = 1.0;
-    IR_GIVE_OPTIONAL_FIELD(ir, value, _IFT_SimpleCrossSection_directorz);
-    propertyDictionary.add(CS_DirectorVectorZ, value);
+        value = 1.0;
+        IR_GIVE_OPTIONAL_FIELD(ir, value, _IFT_SimpleCrossSection_directorz);
+        propertyDictionary.add(CS_DirectorVectorZ, value);
+    }
 
     return CrossSection :: initializeFrom(ir);
 }
@@ -798,7 +799,7 @@ SimpleCrossSection :: giveTemperatureVector(FloatArray &answer, GaussPoint *gp, 
 
     /* add external source, if provided */
     FieldManager *fm = this->domain->giveEngngModel()->giveContext()->giveFieldManager();
-    FM_FieldPtr tf;
+    FieldPtr tf;
 
     if ( ( tf = fm->giveField(FT_Temperature) ) ) {
         // temperature field registered
@@ -808,7 +809,6 @@ SimpleCrossSection :: giveTemperatureVector(FloatArray &answer, GaussPoint *gp, 
         if ( ( err = tf->evaluateAt(et2, gcoords, VM_Total, tStep) ) ) {
             OOFEM_ERROR("tf->evaluateAt failed, element %d, error code %d", elem->giveNumber(), err);
         }
-
         if ( et2.isNotEmpty() ) {
             if ( answer.isEmpty() ) {
                 answer = et2;

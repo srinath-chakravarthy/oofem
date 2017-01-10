@@ -45,7 +45,9 @@
 
 #define _IFT_StaticStructural_Name "staticstructural"
 #define _IFT_StaticStructural_deltat "deltat"
+#define _IFT_StaticStructural_prescribedTimes "prescribedtimes"
 #define _IFT_StaticStructural_solvertype "solvertype"
+#define _IFT_StaticStructural_stiffmode "stiffmode"
 #define _IFT_StaticStructural_nonlocalExtension "nonlocalext"
 
 /**
@@ -79,7 +81,10 @@ protected:
     FloatArray solution;
     FloatArray internalForces;
     FloatArray eNorm;
+
+public:
     std :: unique_ptr< SparseMtrx >stiffnessMatrix;
+protected:
 
     std :: unique_ptr< PrimaryField >field;
 
@@ -87,8 +92,10 @@ protected:
 
     std :: unique_ptr< SparseNonLinearSystemNM >nMethod;
     int solverType;
-    
+    MatResponseMode stiffMode;
+
     double deltaT;
+    FloatArray prescribedTimes;
 
     double deltaT_min, deltaT_max; ///< Max, min and starting deltaT
     
@@ -121,6 +128,7 @@ public:
     virtual int forceEquationNumbering();
 
     virtual TimeStep *giveNextStep();
+    virtual double giveEndOfTimeOfInterest();
     virtual NumericalMethod *giveNumericalMethod(MetaStep *mStep);
     
     virtual fMode giveFormulation() { return TL; }

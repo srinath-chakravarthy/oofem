@@ -109,11 +109,12 @@ NumericalMethod *NonStationaryTransportProblem :: giveNumericalMethod(MetaStep *
 //     - SolutionOfLinearEquations
 
 {
-    if (!linSolver) 
+    if (!linSolver) { 
         linSolver.reset( classFactory.createSparseLinSolver(solverType, this->giveDomain(1), this) );
         if ( !linSolver ) {
-            OOFEM_ERROR("linear solver creation failed");
+            OOFEM_ERROR("linear solver creation failed for lstype %d", solverType);
         }
+    }
     return linSolver.get();
 }
 
@@ -174,6 +175,7 @@ double NonStationaryTransportProblem :: giveUnknownComponent(ValueModeType mode,
 // This function translates this request to numerical method language
 {
     if ( this->requiresUnknownsDictionaryUpdate() ) {
+        if (mode == VM_TotalIntrinsic) mode = VM_Total;
         int hash = this->giveUnknownDictHashIndx(mode, tStep);
         if ( dof->giveUnknowns()->includes(hash) ) {
             return dof->giveUnknowns()->at(hash);
@@ -186,6 +188,18 @@ double NonStationaryTransportProblem :: giveUnknownComponent(ValueModeType mode,
         OOFEM_ERROR("invalid equation number on DoF %d", dof->giveDofID());
     }
 
+    if (mode == VM_TotalIntrinsic) {
+      /*
+      if (tStep == this->giveCurrentStep()) {
+	double rt = UnknownsField->giveUnknownValue(dof, VM_Total, tStep);
+	double rtm1 = UnknownsField->giveUnknownValue(dof, VM_Total, tStep);
+	return (1.-alpha)*rtm1+alpha*rt;
+      } else {
+	OOFEM_ERROR ("mode only supported for current step");
+      }
+      */
+      mode = VM_Total;
+    } 
     return UnknownsField->giveUnknownValue(dof, mode, tStep);
 }
 
@@ -299,7 +313,7 @@ void NonStationaryTransportProblem :: solveYourselfAt(TimeStep *tStep)
 
         //project initial conditions to have temporary temperature in integration points
 
-        //edge or surface load on elements
+        //edge or surface loads on elements
         //add internal source vector on elements
         this->assembleVectorFromElements( bcRhs, icStep, TransportExternalForceAssembler(),
                                          VM_Total, EModelDefaultEquationNumbering(), this->giveDomain(1) );
@@ -325,7 +339,7 @@ void NonStationaryTransportProblem :: solveYourselfAt(TimeStep *tStep)
         OOFEM_LOG_INFO("Assembling conductivity and capacity matrices\n");
 #endif
 
-        //Add contribution of alpha*K+C/dt (where K has contributions from conductivity and neumann b.c.s)
+        //Add contribution of alpha*K+C/dt (where K has contributions from conductivity and Neumann b.c.s)
         this->assemble( *conductivityMatrix, icStep, MidpointLhsAssembler(lumpedCapacityStab, alpha),
                        EModelDefaultEquationNumbering(), this->giveDomain(1) );
     }

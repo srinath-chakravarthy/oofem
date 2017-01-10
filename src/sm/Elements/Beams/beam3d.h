@@ -37,6 +37,7 @@
 
 #include "../sm/Elements/structuralelement.h"
 #include "../sm/CrossSections/fiberedcs.h"
+#include "../sm/Materials/winklermodel.h"
 #include "dofmanager.h"
 
 ///@name Input fields for Beam3d
@@ -46,6 +47,7 @@
 #define _IFT_Beam3d_refnode "refnode"
 #define _IFT_Beam3d_refangle "refangle"
 #define _IFT_Beam3d_zaxis "zaxis"
+#define _IFT_Beam3d_subsoilmat "subsoilmat"
 //@}
 
 namespace oofem {
@@ -66,7 +68,7 @@ class FEI3dLineLin;
  * @author Mikael Öhman
  * @author (several other authors)
  */
-class Beam3d : public StructuralElement, public FiberedCrossSectionInterface
+ class Beam3d : public StructuralElement, public FiberedCrossSectionInterface, public Beam3dSubsoilMaterialInterface
 {
 protected:
     /// Geometry interpolator only.
@@ -86,8 +88,10 @@ protected:
     DofManager *ghostNodes [ 2 ];
     /// number of condensed DOFs
     int numberOfCondensedDofs;
-    
 
+    /// Subsoil material
+    int subsoilMat;
+    
 public:
     Beam3d(int n, Domain *d);
     virtual ~Beam3d();
@@ -137,6 +141,14 @@ public:
             OOFEM_ERROR("No such DOF available on Element %d", number);
         }
     }
+    virtual void giveBoundaryLocationArray(IntArray &locationArray, const IntArray &bNodes, const UnknownNumberingScheme &s, IntArray *dofIds = NULL) {
+      giveLocationArray (locationArray, s, dofIds);
+    }
+     
+    virtual void giveBoundaryLocationArray(IntArray &locationArray, const IntArray &bNodes, const IntArray &dofIDMask, const UnknownNumberingScheme &s, IntArray *dofIds = NULL) {
+      giveLocationArray (locationArray, dofIDMask, s, dofIds);
+    }
+
     virtual double computeVolumeAround(GaussPoint *gp);
 
     virtual int giveIPValue(FloatArray &answer, GaussPoint *gp, InternalStateType type, TimeStep *tStep);
@@ -160,6 +172,23 @@ public:
     virtual Element_Geometry_Type giveGeometryType() const { return EGT_line_1; }
     virtual void updateLocalNumbering(EntityRenumberingFunctor &f);
 
+    /*
+    /// Subsoil support implemented directly enabling the postprocessing of end-forces
+
+    virtual void B3SSI_getNMatrix (FloatMatrix &answer, GaussPoint *gp) {
+      this->computeNmatrixAt(gp->giveNaturalCoordinates(), answer);
+    }
+    virtual void B3SSI_getGtoLRotationMatrix (FloatMatrix &answer) {
+      this->computeGtoLRotationMatrix(answer);
+    }
+    virtual double B3SSI_computeVolumeAround (GaussPoint* gp) {
+      return this->computeVolumeAround(gp);
+    }
+    */
+    virtual void B3SSMI_getUnknownsGtoLRotationMatrix(FloatMatrix& answer);
+
+
+    
 #ifdef __OOFEG
     virtual void drawRawGeometry(oofegGraphicContext &gc, TimeStep *tStep);
     virtual void drawDeformedGeometry(oofegGraphicContext & gc, TimeStep * tStep, UnknownType);
@@ -178,10 +207,6 @@ protected:
     double giveKappazCoeff(TimeStep *tStep);
     void computeKappaCoeffs(TimeStep *tStep);
     virtual double computeLength();
-    virtual void computeClampedStiffnessMatrix(FloatMatrix &answer,
-                                               MatResponseMode rMode, TimeStep *tStep);
-    virtual void computeLocalStiffnessMatrix(FloatMatrix &answer,
-                                             MatResponseMode rMode, TimeStep *tStep);
     virtual void computeGaussPoints();
     virtual void computeConstitutiveMatrixAt(FloatMatrix &answer, MatResponseMode rMode, GaussPoint *gp, TimeStep *tStep);
     virtual void computeStressVector(FloatArray &answer, const FloatArray &strain, GaussPoint *gp, TimeStep *tStep);
@@ -190,6 +215,11 @@ protected:
     virtual int giveNumberOfIPForMassMtrxIntegration() { return 4; }
 
     bool hasDofs2Condense() { return ( ghostNodes [ 0 ] || ghostNodes [ 1 ] ); }
+
+
+    void computeSubSoilNMatrixAt(GaussPoint *gp, FloatMatrix &answer);
+    void computeSubSoilStiffnessMatrix(FloatMatrix &answer,
+				       MatResponseMode rMode, TimeStep *tStep);
 };
 } // end namespace oofem
 #endif // beam3d_h

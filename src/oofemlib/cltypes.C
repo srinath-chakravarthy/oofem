@@ -57,13 +57,15 @@ namespace oofem {
 char cltypesGiveUnknownTypeModeKey(ValueModeType mode)
 {
     switch ( mode ) {
-    case VM_Unknown:      return 0;
+    case VM_Unknown:        return 0;
 
-    case VM_Total:        return 'u';
+    case VM_Total:          return 'u';
 
-    case VM_Velocity:     return 'v';
+    case VM_Velocity:       return 'v';
 
-    case VM_Acceleration: return 'a';
+    case VM_Acceleration:   return 'a';
+      
+    case VM_TotalIntrinsic: return 'i';
 
     default: OOFEM_ERROR("unsupported ValueModeType");
     }
@@ -76,13 +78,14 @@ InternalStateValueType giveInternalStateValueType(InternalStateType type)
 {
     switch ( type ) {
     case IST_StrainTensor:
+    case IST_StrainTensorTemp:
     case IST_DeviatoricStrain:
     case IST_PlasticStrainTensor:
     case IST_ThermalStrainTensor:
     case IST_CylindricalStrainTensor:
     case IST_CreepStrainTensor:
-    case IST_StrainTensorTemp:
-    case IST_ShellForceTensor:
+    case IST_ShellStrainTensor:
+    case IST_CurvatureTensor:
     case IST_CurvatureTensorTemp:
         return ISVT_TENSOR_S3E;
 
@@ -91,17 +94,17 @@ InternalStateValueType giveInternalStateValueType(InternalStateType type)
     case IST_CylindricalStressTensor:
     case IST_DeviatoricStress:
     case IST_CauchyStressTensor:
-    ///@todo Remove "Shell" from these. They are general;
-    case IST_ShellStrainTensor: ///@todo Are shell strains S3E as well?
-    case IST_ShellCurvatureTensor:
-    case IST_ForceTensorTemp:
-    ///@todo "Momentum" should be renamed "Moment"
-    case IST_ShellMomentumTensor:
-    case IST_MomentumTensorTemp:
+
+    case IST_ShellForceTensor:
+    case IST_ShellForceTensorTemp:
+    case IST_ShellMomentTensor:
+    case IST_ShellMomentTensorTemp:
+
     ///@todo Should be have these are S3E or just S3?
     case IST_AutogenousShrinkageTensor:
     case IST_DryingShrinkageTensor:
     case IST_TotalShrinkageTensor:
+
     // Damage tensors
     case IST_DamageTensor:
     case IST_DamageTensorTemp:

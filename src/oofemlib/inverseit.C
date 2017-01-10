@@ -68,10 +68,28 @@ InverseIteration :: solve(SparseMtrx &a, SparseMtrx &b, FloatArray &_eigv, Float
     std :: vector< FloatArray > z(nc, nn), zz(nc, nn), x(nc, nn);
 
     /*  initial setting  */
+#if 0
     ww.add(1.0);
     for ( int j = 0; j < nc; j++ ) {
         z[j].add(1.0);
     }
+#else
+    {
+        FloatArray ad(nn), bd(nn);
+        for ( int i = 1; i <= nn; i++ ) {
+            ad.at(i) = fabs(a.at(i, i));
+            bd.at(i) = fabs(b.at(i, i));
+        }
+        IntArray order;
+        order.enumerate(nn);
+        std :: sort(order.begin(), order.end(), [&ad, &bd](int a, int b) { return bd.at(a) * ad.at(b) > bd.at(b) * ad.at(a); });
+        for ( int i = 0; i < nc; i++ ) {
+            x[i].at(order[i]) = 1.0;
+            b.times(x[i], z[i]);
+            ww.at(i + 1) = z[i].dotProduct(x[i]);
+        }
+    }
+#endif
 
     int it;
     for ( it = 0; it < nitem; it++ ) {
@@ -90,7 +108,6 @@ InverseIteration :: solve(SparseMtrx &a, SparseMtrx &b, FloatArray &_eigv, Float
             w.at(j + 1) = zz[j].dotProduct(x[j]);
         }
 
-        //mmc_sky (m,x,z,adrm,n,niv);
         for ( int j = 0; j < nc; j++ ) {
             b.times(x[j], z[j]);
         }

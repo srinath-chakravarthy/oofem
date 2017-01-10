@@ -34,6 +34,7 @@
 
 #include "../sm/EngineeringModels/staticstructural.h"
 #include "../sm/Elements/structuralelement.h"
+#include "../sm/Elements/structuralelementevaluator.h"
 #include "dofmanager.h"
 #include "set.h"
 #include "timestep.h"
@@ -64,10 +65,11 @@ REGISTER_EngngModel(StaticStructural);
 StaticStructural :: StaticStructural(int i, EngngModel *_master) : StructuralEngngModel(i, _master),
     internalForces(),
     eNorm(),
-    sparseMtrxType(SMT_Skyline)
+    sparseMtrxType(SMT_Skyline),
+    solverType(0),
+    stiffMode(TangentStiffness)
 {
     ndomains = 1;
-    solverType = 0;
     mRecomputeStepAfterPropagation = false;
     deltaT_min = 0.0;
     deltaT_max = 1.0e30;
@@ -121,11 +123,22 @@ StaticStructural :: initializeFrom(InputRecord *ir)
     IR_GIVE_OPTIONAL_FIELD(ir, val, _IFT_EngngModel_smtype);
     sparseMtrxType = ( SparseMtrxType ) val;
 
-    this->deltaT = 1.0;
-    IR_GIVE_OPTIONAL_FIELD(ir, deltaT, _IFT_StaticStructural_deltat);
+    prescribedTimes.clear();
+    IR_GIVE_OPTIONAL_FIELD(ir, prescribedTimes, _IFT_StaticStructural_prescribedTimes);
+    if ( prescribedTimes.giveSize() > 0 ) {
+        numberOfSteps = prescribedTimes.giveSize();
+    } else {
+        this->deltaT = 1.0;
+        IR_GIVE_OPTIONAL_FIELD(ir, deltaT, _IFT_StaticStructural_deltat);
+        IR_GIVE_FIELD(ir, numberOfSteps, _IFT_EngngModel_nsteps);
+    }
 
     this->solverType = 0; // Default NR
     IR_GIVE_OPTIONAL_FIELD(ir, solverType, _IFT_StaticStructural_solvertype);
+    
+    int tmp = TangentStiffness; // Default TangentStiffness
+    IR_GIVE_OPTIONAL_FIELD(ir, tmp, _IFT_StaticStructural_stiffmode);
+    this->stiffMode = (MatResponseMode)tmp;
 
     int _val = IG_Tangent;
     IR_GIVE_OPTIONAL_FIELD(ir, _val, _IFT_EngngModel_initialGuess);
@@ -182,10 +195,26 @@ TimeStep *StaticStructural :: giveNextStep()
         currentStep.reset( new TimeStep(giveNumberOfTimeStepWhenIcApply(), this, 1, 0., this->deltaT, 0) );
     }
     previousStep = std :: move(currentStep);
-    currentStep.reset( new TimeStep(*previousStep, this->deltaT) );
+    double dt;
+    if ( this->prescribedTimes.giveSize() > 0 ) {
+        dt = this->prescribedTimes.at(previousStep->giveNumber() + 1) - previousStep->giveTargetTime();
+    } else {
+        dt = this->deltaT;
+    }
+    currentStep.reset( new TimeStep(*previousStep, dt) );
 
     return currentStep.get();
 }
+
+
+double StaticStructural :: giveEndOfTimeOfInterest()
+{
+    if ( this->prescribedTimes.giveSize() > 0 )
+        return prescribedTimes.at(prescribedTimes.giveSize());
+    else
+        return this->deltaT * this->giveNumberOfSteps();
+}
+
 
 
 void StaticStructural :: solveYourself()
@@ -331,7 +360,6 @@ bool StaticStructural::proceedStep(TimeStep* tStep)
         this->internalForces.printYourself("internal forces");
 #endif
 
-        if ( this->giveParallelContext( di )->localNorm(extrapolatedForces) > 0. ) {
             OOFEM_LOG_RELEVANT("Computing old tangent\n");
             this->updateComponent( tStep, NonLinearLhs, this->giveDomain(di) );
             SparseLinearSystemNM *linSolver = nMethod->giveLinearSolver();
@@ -429,7 +457,7 @@ void StaticStructural :: updateComponent(TimeStep *tStep, NumericalCmpn cmpn, Do
         internalVarUpdateStamp = tStep->giveSolutionStateCounter(); // Hack for linearstatic
     } else if ( cmpn == NonLinearLhs ) {
         this->stiffnessMatrix->zero();
-        this->assemble(*this->stiffnessMatrix, tStep, TangentAssembler(TangentStiffness), EModelDefaultEquationNumbering(), d);
+        this->assemble(*this->stiffnessMatrix, tStep, TangentAssembler(this->stiffMode), EModelDefaultEquationNumbering(), d);
     } else {
         OOFEM_ERROR("Unknown component");
     }

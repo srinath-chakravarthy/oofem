@@ -43,6 +43,8 @@
 #include "nrsolver.h"
 #include "unknownnumberingscheme.h"
 #include "function.h"
+#include "dofmanager.h"
+#include "assemblercallback.h"
 // Temporary:
 #include "generalboundarycondition.h"
 #include "boundarycondition.h"
@@ -108,10 +110,10 @@ TransientTransportProblem :: initializeFrom(InputRecord *ir)
         FieldManager *fm = this->giveContext()->giveFieldManager();
         for ( int i = 1; i <= exportFields.giveSize(); i++ ) {
             if ( exportFields.at(i) == FT_Temperature ) {
-                FM_FieldPtr _temperatureField( new MaskedPrimaryField ( ( FieldType ) exportFields.at(i), this->field.get(), {T_f} ) );
+                FieldPtr _temperatureField( new MaskedPrimaryField ( ( FieldType ) exportFields.at(i), this->field.get(), {T_f} ) );
                 fm->registerField( _temperatureField, ( FieldType ) exportFields.at(i) );
             } else if ( exportFields.at(i) == FT_HumidityConcentration ) {
-                FM_FieldPtr _concentrationField( new MaskedPrimaryField ( ( FieldType ) exportFields.at(i), this->field.get(), {C_1} ) );
+                FieldPtr _concentrationField( new MaskedPrimaryField ( ( FieldType ) exportFields.at(i), this->field.get(), {C_1} ) );
                 fm->registerField( _concentrationField, ( FieldType ) exportFields.at(i) );
             }
         }
@@ -127,7 +129,11 @@ double TransientTransportProblem :: giveUnknownComponent(ValueModeType mode, Tim
     double val1 = field->giveUnknownValue(dof, VM_Total, tStep);
     double val0 = field->giveUnknownValue(dof, VM_Total, tStep->givePreviousStep());
     if ( mode == VM_Total ) {
+        //return this->alpha * val1 + (1.-this->alpha) * val0;
+        return val1;//The output should be given always at the end of the time step, regardless of alpha
+    } else if ( mode == VM_TotalIntrinsic) {
         return this->alpha * val1 + (1.-this->alpha) * val0;
+        //return val1;
     } else if ( mode == VM_Velocity ) {
         return (val1 - val0) / tStep->giveTimeIncrement();
     } else if ( mode == VM_Incremental ) {
@@ -171,7 +177,7 @@ TimeStep *TransientTransportProblem :: giveNextStep()
         // first step -> generate initial step
         currentStep.reset( new TimeStep( *giveSolutionStepWhenIcApply() ) );
     }
-    
+
     double dt = this->giveDeltaT(currentStep->giveNumber()+1);
     previousStep = std :: move(currentStep);
     currentStep.reset( new TimeStep(*previousStep, dt) );
@@ -199,6 +205,8 @@ TimeStep *TransientTransportProblem :: giveSolutionStepWhenIcApply(bool force)
 
 void TransientTransportProblem :: solveYourselfAt(TimeStep *tStep)
 {
+    OOFEM_LOG_INFO( "Solving [step number %5d, time %e]\n", tStep->giveNumber(), tStep->giveTargetTime() );
+    
     Domain *d = this->giveDomain(1);
     int neq = this->giveNumberOfDomainEquations( 1, EModelDefaultEquationNumbering() );
 
@@ -213,7 +221,7 @@ void TransientTransportProblem :: solveYourselfAt(TimeStep *tStep)
     // (backwards compatibility issues due to inconsistencies in other solvers).
     TimeStep *prev = tStep->givePreviousStep();
     for ( auto &dman : d->giveDofManagers() ) {
-        static_cast< DofDistributedPrimaryField* >(field.get())->setInitialGuess(*dman, tStep, prev);
+        static_cast< DofDistributedPrimaryField* >(field.get())->setInitialGuess(*dman, tStep, prev);//copy total values into new tStep
     }
 
     for ( auto &elem : d->giveElements() ) {
@@ -238,26 +246,6 @@ void TransientTransportProblem :: solveYourselfAt(TimeStep *tStep)
     if ( !effectiveMatrix ) {
         effectiveMatrix.reset( classFactory.createSparseMtrx(sparseMtrxType) );
         effectiveMatrix->buildInternalStructure( this, 1, EModelDefaultEquationNumbering() );
-
-        if ( lumped ) {
-            capacityDiag.resize(neq);
-            this->assembleVector( capacityDiag, tStep, LumpedMassVectorAssembler(), VM_Total, EModelDefaultEquationNumbering(), d );
-        } else {
-            capacityMatrix.reset( classFactory.createSparseMtrx(sparseMtrxType) );
-            capacityMatrix->buildInternalStructure( this, 1, EModelDefaultEquationNumbering() );
-            this->assemble( *capacityMatrix, tStep, MassMatrixAssembler(), EModelDefaultEquationNumbering(), d );
-        }
-        
-        if ( this->keepTangent ) {
-            this->assemble( *effectiveMatrix, tStep, TangentAssembler(TangentStiffness),
-                           EModelDefaultEquationNumbering(), d );
-            effectiveMatrix->times(alpha);
-            if ( lumped ) {
-                effectiveMatrix->addDiagonal(1./tStep->giveTimeIncrement(), capacityDiag);
-            } else {
-                effectiveMatrix->add(1./tStep->giveTimeIncrement(), *capacityMatrix);
-            }
-        }
     }
 
 
@@ -276,6 +264,7 @@ void TransientTransportProblem :: solveYourselfAt(TimeStep *tStep)
     FloatArray incrementOfSolution;
     double loadLevel;
     int currentIterations;
+    this->updateComponent(tStep, InternalRhs, d); // @todo Hack to ensure that internal RHS is evaluated before the tangent. This is not ideal, causing this to be evaluated twice for a linearproblem. We have to find a better way to handle this.
     this->nMethod->solve(*this->effectiveMatrix,
                          externalForces,
                          NULL, // ignore
@@ -294,7 +283,7 @@ void TransientTransportProblem :: solveYourselfAt(TimeStep *tStep)
 void
 TransientTransportProblem :: updateComponent(TimeStep *tStep, NumericalCmpn cmpn, Domain *d)
 {
-    // F(T) + C*dT/dt = Q
+    // F(T) + C*dT/dt = Q, F(T)=(K_c+K_h)*T-R_q-R_h
     // Linearized:
     // F(T^(k)) + K*a*dT_1 = Q - C * dT/dt^(k) - C/dt * dT_1
     // Rearranged
@@ -302,10 +291,10 @@ TransientTransportProblem :: updateComponent(TimeStep *tStep, NumericalCmpn cmpn
     // K_eff        * dT_1 = Q - F_eff
     // Update:
     // T_1 += dT_1
-    
+
     ///@todo NRSolver should report when the solution changes instead of doing it this way.
     this->field->update(VM_Total, tStep, solution, EModelDefaultEquationNumbering());
-    ///@todo Need to reset the boundary conditions properly since some "update" is doing strange 
+    ///@todo Need to reset the boundary conditions properly since some "update" is doing strange
     /// things such as applying the (wrong) boundary conditions. This call will be removed when that code can be removed.
     this->field->applyBoundaryCondition(tStep);
 
@@ -315,15 +304,16 @@ TransientTransportProblem :: updateComponent(TimeStep *tStep, NumericalCmpn cmpn
         this->assembleVector(this->internalForces, tStep, InternalForceAssembler(), VM_Total,
                              EModelDefaultEquationNumbering(), d, & this->eNorm);
         this->updateSharedDofManagers(this->internalForces, EModelDefaultEquationNumbering(), InternalForcesExchangeTag);
-
         if ( lumped ) {
             // Note, inertia contribution cannot be computed on element level when lumped mass matrices are used.
             FloatArray oldSolution, vel;
             this->field->initialize(VM_Total, tStep->givePreviousStep(), oldSolution, EModelDefaultEquationNumbering());
             vel.beDifferenceOf(solution, oldSolution);
             vel.times( 1./tStep->giveTimeIncrement() );
+            FloatArray capacityDiag(vel.giveSize());
+            this->assembleVector( capacityDiag, tStep, LumpedMassVectorAssembler(), VM_Total, EModelDefaultEquationNumbering(), d );
             for ( int i = 0; i < vel.giveSize(); ++i ) {
-                this->internalForces[i] += this->capacityDiag[i] * vel[i];
+                this->internalForces[i] += capacityDiag[i] * vel[i];
             }
         } else {
             FloatArray tmp;
@@ -334,16 +324,11 @@ TransientTransportProblem :: updateComponent(TimeStep *tStep, NumericalCmpn cmpn
 
     } else if ( cmpn == NonLinearLhs ) {
         // K_eff = (a*K + C/dt)
-        if ( !this->keepTangent ) {
+        if ( !this->keepTangent || !this->hasTangent ) {
             this->effectiveMatrix->zero();
-            this->assemble( *effectiveMatrix, tStep, TangentAssembler(TangentStiffness),
-                           EModelDefaultEquationNumbering(), d );
-            effectiveMatrix->times(alpha);
-            if ( lumped ) {
-                effectiveMatrix->addDiagonal(1./tStep->giveTimeIncrement(), capacityDiag);
-            } else {
-                effectiveMatrix->add(1./tStep->giveTimeIncrement(), *capacityMatrix);
-            }
+            this->assemble( *effectiveMatrix, tStep, EffectiveTangentAssembler(TangentStiffness, lumped, this->alpha, 1./tStep->giveTimeIncrement()),
+                                                                               EModelDefaultEquationNumbering(), d );
+            this->hasTangent = true;
         }
     } else {
         OOFEM_ERROR("Unknown component");
@@ -396,12 +381,15 @@ TransientTransportProblem :: requiresEquationRenumbering(TimeStep *tStep)
 int
 TransientTransportProblem :: forceEquationNumbering()
 {
-    this->capacityDiag.clear();
-    this->capacityMatrix.reset(NULL);
     this->effectiveMatrix.reset(NULL);
     return EngngModel :: forceEquationNumbering();
 }
 
+void
+TransientTransportProblem :: updateYourself(TimeStep *tStep)
+{
+    EngngModel :: updateYourself(tStep);
+}
 
 contextIOResultType
 TransientTransportProblem :: saveContext(DataStream *stream, ContextMode mode, void *obj)
@@ -513,6 +501,26 @@ TransientTransportProblem :: updateDomainLinks()
 {
     EngngModel :: updateDomainLinks();
     this->giveNumericalMethod( this->giveCurrentMetaStep() )->setDomain( this->giveDomain(1) );
+}
+
+FieldPtr TransientTransportProblem::giveField (FieldType key, TimeStep *tStep)
+{
+    /* Note: the current implementation uses MaskedPrimaryField, that is automatically updated with the model progress, 
+        so the returned field always refers to active solution step. 
+    */
+
+    if ( tStep != this->giveCurrentStep()) {
+        OOFEM_ERROR("Unable to return field representation for non-current time step");
+    }
+    if ( key == FT_Temperature ) {
+        FieldPtr _ptr ( new MaskedPrimaryField ( key, this->field.get(), {T_f} ) );
+        return _ptr;
+    } else if ( key == FT_HumidityConcentration ) {
+        FieldPtr _ptr ( new MaskedPrimaryField ( key, this->field.get(), {C_1} ) );
+        return _ptr;
+    } else {
+        return FieldPtr();
+    }
 }
 
 

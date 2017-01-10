@@ -44,6 +44,7 @@
 #include "contextioerr.h"
 #include "generalboundarycondition.h"
 #include "prescribedgradienthomogenization.h"
+#include "mathfem.h"
 
 #include <sstream>
 
@@ -232,6 +233,12 @@ StructuralMaterialStatus(n, d, g)
     if ( !this->createRVE(n, gp, inputfile) ) {
         OOFEM_ERROR("Couldn't create RVE");
     }
+}
+
+PrescribedGradientHomogenization* StructuralFE2MaterialStatus::giveBC()
+{
+	this->bc = dynamic_cast< PrescribedGradientHomogenization * >( this->rve->giveDomain(1)->giveBc(1) );
+	return this->bc;
 }
 
 
