@@ -371,7 +371,7 @@ bool StaticStructural::proceedStep(TimeStep* tStep)
             this->field->update(VM_Total, tStep, this->solution, EModelDefaultEquationNumbering());
             this->field->applyBoundaryCondition(tStep); ///@todo Temporary hack to override the incorrect values that is set by "update" above. Remove this when that is fixed.
         }
-    } else if ( this->initialGuessType != IG_None ) {
+      else if ( this->initialGuessType != IG_None ) {
         OOFEM_ERROR("Initial guess type: %d not supported", initialGuessType);
     } else {
         incrementOfSolution.zero();
