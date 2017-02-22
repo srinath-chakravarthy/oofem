@@ -1,4 +1,5 @@
 from __future__ import print_function
+from mpi4py import MPI
 import liboofem
 dr=liboofem.OOFEMTXTDataReader("tmpatch42.in")
 pb=liboofem.InstanciateProblem(dr,liboofem.problemMode._processor,0)

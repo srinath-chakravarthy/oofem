@@ -94,6 +94,7 @@ namespace bp = boost::python;
 #include "exportmodulemanager.h"
 #include "outputmanager.h"
 #include "classfactory.h"
+#include "set.h"
 
 #include "Materials/structmatsettable.h"
 
@@ -528,6 +529,10 @@ public:
     MetaStep* default_giveMetaStep(int i) {return this->EngngModel::giveMetaStep(i);}
 };
 
+
+int (PyEngngModel::*forceEquationNumbering_1) () = &EngngModel::forceEquationNumbering;
+int (PyEngngModel::*forceEquationNumbering_2) (int i) = &EngngModel::forceEquationNumbering;
+
 void pyclass_EngngModel()
 {
     class_<PyEngngModel, boost::noncopyable>("EngngModel", no_init)
@@ -569,12 +574,14 @@ void pyclass_EngngModel()
         .def("initMetaStepAttributes", &EngngModel::initMetaStepAttributes)
         .def("preInitializeNextStep", &EngngModel::preInitializeNextStep)
         .def("giveClassName", &EngngModel::giveClassName)
+	.def("requiresEquationRenumbering",&EngngModel::requiresEquationRenumbering)
+	.def("forceEquationNumbering", forceEquationNumbering_1)
         ;
 }
 
-EngngModel *InstanciateProblem_1 (DataReader *dr, problemMode mode, int contextFlag)
+EngngModel *InstanciateProblem_1 (DataReader *dr, problemMode mode, int contextFlag, bool parallelflag)
 {
-    return InstanciateProblem (dr, mode, contextFlag, 0);
+    return InstanciateProblem (dr, mode, contextFlag, 0, parallelflag);
 }
 
 
@@ -720,9 +727,19 @@ void pyclass_Domain()
         .def("checkConsistency", &Domain::checkConsistency)
         .def("giveArea", &Domain::giveArea)
         .def("giveVolume", &Domain::giveVolume)
+	.def("giveSet", &Domain::giveSet, return_internal_reference<>())
         ;
 }
 
+/*****************************************************
+* Set
+*****************************************************/
+void pyclass_Set()
+{
+    class_<Set, bases<FEMComponent>, boost::noncopyable >("set", no_init)
+	.def("giveNodeList",&Set::giveNodeList, return_internal_reference<>())
+    ;
+}
 
 /*****************************************************
 * FEMComponent
