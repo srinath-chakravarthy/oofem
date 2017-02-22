@@ -95,6 +95,8 @@ namespace bp = boost::python;
 #include "outputmanager.h"
 #include "classfactory.h"
 #include "set.h"
+#include "manualboundarycondition.h"
+#include "dof.h"
 
 #include "Materials/structmatsettable.h"
 
@@ -576,6 +578,7 @@ void pyclass_EngngModel()
         .def("giveClassName", &EngngModel::giveClassName)
 	.def("requiresEquationRenumbering",&EngngModel::requiresEquationRenumbering)
 	.def("forceEquationNumbering", forceEquationNumbering_1)
+	.def("giveNumberOfMetaSteps",&EngngModel::giveNumberOfMetaSteps)
         ;
 }
 
@@ -645,6 +648,7 @@ struct PyDataReader : DataReader, wrapper<DataReader>
 void pyclass_DataReader()
 {
     class_<PyDataReader, boost::noncopyable>("DataReader")
+	.def("finish", &DataReader::finish)
         ;
 }
 
@@ -801,6 +805,7 @@ void pyclass_DofManager()
         .add_property("label",&DofManager::giveLabel)
         .def("giveUnknownVector", giveUnknownVector_1)
         .def("computeL2GTransformation", &DofManager::computeL2GTransformation)
+	.def("giveDofWithId", &DofManager::giveDofWithID, return_internal_reference<>())
         ;
 }
 
@@ -976,7 +981,19 @@ void pyclass_BoundaryCondition()
         ;
 }
 
+void pyclass_Dof()
+{
+    class_<Dof, boost::noncopyable>("Dof", no_init)
+    ;
+}
 
+void pyclass_ManualBoundaryCondition()
+{
+    class_<ManualBoundaryCondition, bases<BoundaryCondition>, boost::noncopyable >("BoundaryCondition", init<int, Domain*>())
+    .def("setManualValue", &ManualBoundaryCondition::setManualValue)
+    .def("addManualValue", &ManualBoundaryCondition::addManualValue)
+    ;
+}
 /*****************************************************
 * Load
 *****************************************************/
