@@ -273,6 +273,7 @@ set (core_bc
     reinforcement.C
     surfacetensionbc.C
     linearconstraintbc.C
+    manualboundarycondition.C
     )
 
 if (USE_PYTHON)
