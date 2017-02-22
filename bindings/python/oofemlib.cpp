@@ -1082,6 +1082,7 @@ void pyclass_MetaStep()
     class_<MetaStep, boost::noncopyable>("MetaStep",no_init)
         .def("giveNumber", &MetaStep::giveNumber)
         .add_property("number", &MetaStep::giveNumber)
+	.def("giveNumberOfSteps", &MetaStep::giveNumberOfSteps)
         ;
 }
 
