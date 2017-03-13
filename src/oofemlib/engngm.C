@@ -1784,6 +1784,14 @@ EngngModel :: checkProblemConsistency()
     return result;
 }
 
+void
+EngngModel::RenumberEquations()
+{
+    if ( this->requiresEquationRenumbering( this->giveCurrentStep() ) ) {
+    this->forceEquationNumbering();
+	}
+
+}
 
 void
 EngngModel :: postInitialize()

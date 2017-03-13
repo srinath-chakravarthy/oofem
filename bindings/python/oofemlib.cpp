@@ -232,7 +232,7 @@ void pyclass_FloatArray()
         .def(init< optional<int> >())
         .def(init< FloatArray& >())
         .def("resize", &FloatArray::resize, "Checks size of receiver towards requested bounds. If dimension mismatch, size is adjusted accordingly")
-        .def("containsOnlyZeroes", &FloatArray::containsOnlyZeroes, "Returns nonzero if all coefficients of the receiver are 0, else returns zero")
+        .def("containsOnlyZeroes", &FloatArray::containsOnlyZeroes, "Retur	ns nonzero if all coefficients of the receiver are 0, else returns zero")
         .def("giveSize", &FloatArray::giveSize, "Returns the size of receiver")
         .def("isNotEmpty", &FloatArray::isNotEmpty, "Returns true if receiver is not empty")
         .def("isEmpty", &FloatArray::isEmpty, "Returns true if receiver is empty")
@@ -454,11 +454,19 @@ void pyclass_SparseMtrx()
 /*****************************************************
 * SpatialLocalizer
 *****************************************************/
+
+class PySpatialLocalizer : public SpatialLocalizer, public wrapper<SpatialLocalizer>
+{
+public:
+    PySpatialLocalizer(Domain *d) : SpatialLocalizer(d) {}
+};
+
 Element* (SpatialLocalizer::*giveElementContainingPoint_1)(const FloatArray &coords, const IntArray* regionList) = &SpatialLocalizer::giveElementContainingPoint;
+
 void pyclass_SpatialLocalizer()
 {
     class_<SpatialLocalizer, boost::noncopyable>("SpatialLocalizer", no_init)
-      .def("giveElementContainingPoint", pure_virtual(giveElementContainingPoint_1), return_internal_reference<>())
+      .def("giveElementContainingPoint", giveElementContainingPoint_1, return_internal_reference<>())
         // XXX .def("giveElementCloseToPoint", &SpatialLocalizer::giveElementCloseToPoint, return_internal_reference<>())
         .def("giveElementClosestToPoint", &SpatialLocalizer::giveElementClosestToPoint, return_internal_reference<>())
         .def("init", &SpatialLocalizer::init)
@@ -579,6 +587,7 @@ void pyclass_EngngModel()
 	.def("requiresEquationRenumbering",&EngngModel::requiresEquationRenumbering)
 	.def("forceEquationNumbering", forceEquationNumbering_1)
 	.def("giveNumberOfMetaSteps",&EngngModel::giveNumberOfMetaSteps)
+	.def("RenumberEquations", &EngngModel::RenumberEquations)
         ;
 }
 
@@ -806,9 +815,17 @@ void pyclass_DofManager()
         .def("giveUnknownVector", giveUnknownVector_1)
         .def("computeL2GTransformation", &DofManager::computeL2GTransformation)
 	.def("giveDofWithId", &DofManager::giveDofWithID, return_internal_reference<>())
+	.def("giveNumberOfDofs",&DofManager::giveNumberOfDofs )
+	.def("giveDofWithId", &DofManager::giveDofWithID,return_internal_reference<>())
         ;
 }
-
+void pyclass_Dof()
+{
+    class_<Dof, boost::noncopyable>("Dof", no_init)
+	.def("giveBcId",&Dof::giveBcId)
+	.def("giveDofID", &Dof::giveDofID)
+    ;
+}
 
 /*****************************************************
 * Element
@@ -842,13 +859,25 @@ public:
         return this->get_override("evaluateAt")(answer, coords,mode,atTime);
     }
 
-
+//      bool computeLocalCoordinates(FloatArray &answer, const FloatArray &gcoords) {
+//  	return this->get_override("computeLocalCoordinates")(answer, gcoords);
+//      }
 
 };
 
 
 void (PyElement::*giveLocationArray_1)(IntArray &locationArray, const UnknownNumberingScheme &s, IntArray *dofIds) const  = &Element::giveLocationArray;
 void (PyElement::*giveLocationArray_2)(IntArray &locationArray, const IntArray &dofIDMask, const UnknownNumberingScheme &s, IntArray *dofIds) const = &Element::giveLocationArray;
+
+
+// FloatArray Field_evaluateAtPos(Field* field, FloatArray coords, ValueModeType mode, TimeStep* atTime){
+//     FloatArray answer;
+//     int err=field->evaluateAt(answer,coords,mode,atTime);
+//     if(err) throw std::runtime_error("Error evaluating field at given position.");
+//     return answer;
+// }
+
+
 
 void pyclass_Element()
 {
@@ -895,6 +924,16 @@ void pyclass_Element()
         .add_property("crossSection",make_function(&PyElement::giveCrossSection, return_internal_reference<>()), &PyElement::setCrossSection)
         .def("giveRegionNumber", &Element::giveRegionNumber)
         .add_property("regionNumber", &PyElement::giveRegionNumber)
+	.def("computeLocalCoordinates", &Element::computeLocalCoordinates)
+	.def("computeFiled", &Element::computeField)
+	     
+// 	     +[](FloatArray lcoord, FloatArray coords)
+// 	{
+// 	  FloatArray lcoord;
+// 	  bool err;
+// 	  err  = Element_computeLocalCoordinates(lcoord, coords);
+// 	  return make_tuple(err, lcoord);
+// 	})
         ;
 }
 
@@ -965,6 +1004,7 @@ void pyclass_CrossSection()
 void pyclass_GeneralBoundaryCondition()
 {
     class_<GeneralBoundaryCondition, bases<FEMComponent>, boost::noncopyable >("GeneralBoundaryCondition", no_init)
+	.def("giveDofIDs", &GeneralBoundaryCondition::giveDofIDs, return_internal_reference<>() )
         ;
 }
 
@@ -979,12 +1019,6 @@ void pyclass_BoundaryCondition()
         // XXX .def("give", &BoundaryCondition::give)
         .def("isImposed", &BoundaryCondition::isImposed)
         ;
-}
-
-void pyclass_Dof()
-{
-    class_<Dof, boost::noncopyable>("Dof", no_init)
-    ;
 }
 
 void pyclass_ManualBoundaryCondition()
@@ -1828,6 +1862,7 @@ BOOST_PYTHON_MODULE (liboofem)
     pyclass_CrossSection();
     pyclass_GeneralBoundaryCondition();
     pyclass_BoundaryCondition();
+    pyclass_ManualBoundaryCondition();
     pyclass_Load();
     pyclass_Function();
     pyclass_MaterialStatus();
@@ -1842,6 +1877,7 @@ BOOST_PYTHON_MODULE (liboofem)
     pyclass_GaussPoint();
     pyclass_OutputManager();
     pyclass_ClassFactory();
+    pyclass_Dof();
 
     /*
     Upcast converters which make boost::python accept shared_ptr<Derived> where shared_ptr<Base> is expected.

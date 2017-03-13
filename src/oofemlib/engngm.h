@@ -1128,6 +1128,7 @@ public:
     virtual void showSparseMtrxStructure(int type, oofegGraphicContext &gc, TimeStep *tStep) { }
 #endif
 
+    void RenumberEquations();
     /// Returns string for prepending output (used by error reporting macros).
     std :: string errorInfo(const char *func) const;
 };
