@@ -237,7 +237,7 @@ ElementCommunicator :: setUpCommunicationMaps(EngngModel *pm,  bool excludeSelfC
 #endif
 
 
-    StaticCommunicationBuffer commBuff(MPI_COMM_WORLD);
+    StaticCommunicationBuffer commBuff(pm->giveParallelComm());
     IntArray remoteDomainRecvList;
     IntArray toSendMap;
     int localExpectedSize, globalRecvSize;
@@ -252,7 +252,7 @@ ElementCommunicator :: setUpCommunicationMaps(EngngModel *pm,  bool excludeSelfC
 
 
 #ifdef __USE_MPI
-    result = MPI_Allreduce(& localExpectedSize, & globalRecvSize, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+    result = MPI_Allreduce(& localExpectedSize, & globalRecvSize, 1, MPI_INT, MPI_MAX, pm->giveParallelComm());
     if ( result != MPI_SUCCESS ) {
         OOFEM_ERROR("MPI_Allreduce failed");
     }

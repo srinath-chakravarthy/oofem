@@ -23,7 +23,7 @@
  *  version 2.1 of the License, or (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty ofMPI
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *  Lesser General Public License for more details.
  *
@@ -132,7 +132,7 @@ Natural2GlobalOrdering :: init(EngngModel *emodel, int di, const UnknownNumberin
 
     // exchange with other procs the number of eqs numbered on particular procs
     int *leqs = new int [ emodel->giveNumberOfProcesses() ];
-    MPI_Allgather(& l_neqs, 1, MPI_INT, leqs, 1, MPI_INT, MPI_COMM_WORLD);
+    MPI_Allgather(& l_neqs, 1, MPI_INT, leqs, 1, MPI_INT, emodel->giveParallelComm());
     // compute local offset
     int offset = 0;
     for ( int j = 0; j < myrank; j++ ) {
@@ -330,7 +330,7 @@ Natural2GlobalOrdering :: init(EngngModel *emodel, int di, const UnknownNumberin
     // receive remote eqs and complete global numbering
     CommunicationBuffer **rbuffs = new CommunicationBuffer * [ nproc ];
     for ( int p = 0; p < nproc; p++ ) {
-        rbuffs [ p ] = new StaticCommunicationBuffer(MPI_COMM_WORLD, 0);
+        rbuffs [ p ] = new StaticCommunicationBuffer(emodel->giveParallelComm(), 0);
         rbuffs [ p ]->resize( rbuffs [ p ]->givePackSizeOfInt(1) * sizeToRecv(p) );
 #if 0
         OOFEM_LOG_INFO( "[%d]Natural2GlobalOrdering :: init: Receive buffer[%d] size %d\n",
@@ -450,7 +450,7 @@ Natural2GlobalOrdering :: init(EngngModel *emodel, int di, const UnknownNumberin
     delete[] buffs;
     delete[] leqs;
 
-    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier(emodel->giveParallelComm());
 #ifdef __VERBOSE_PARALLEL
     VERBOSEPARALLEL_PRINT("Natural2GlobalOrdering :: init", "done", myrank);
 #endif
