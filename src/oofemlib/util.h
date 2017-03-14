@@ -37,6 +37,9 @@
 
 #include "oofemcfg.h"
 #include "problemmode.h"
+#ifdef __PARALLEL_MODE
+#include <mpi.h>
+#endif
 
 namespace oofem {
 class DataReader;
@@ -50,6 +53,10 @@ class EngngModel;
  * @param parallelFlag Determines if the problem should be run in parallel or not.
  * @param contextFlag When set, turns on context output after each step.
  */
+#ifdef __PARALLEL_MODE
+extern MPI_Comm util_comm;
+void Setutil_comm(MPI_Comm comm);
+#endif
 OOFEM_EXPORT EngngModel *InstanciateProblem(DataReader *dr, problemMode mode, int contextFlag, EngngModel *master = 0, bool parallelFlag = false);
 } // end namespace oofem
 #endif // util_h

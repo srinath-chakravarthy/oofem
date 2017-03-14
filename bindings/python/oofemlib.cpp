@@ -1818,7 +1818,16 @@ static void setloggercomm(object py_comm)
     MPI_Comm *comm_p = PyMPIComm_Get(py_obj);
     if (comm_p == NULL) throw_error_already_set();
     oofem_logger.setComm(*comm_p);
+    Setutil_comm(*comm_p);
 }
+static void setglobalcomm(object py_comm)
+{
+    PyObject* py_obj = py_comm.ptr();
+    MPI_Comm *comm_p = PyMPIComm_Get(py_obj);
+    if (comm_p == NULL) throw_error_already_set();
+    Setutil_comm(*comm_p);
+}
+
 #endif
 
 
@@ -1948,6 +1957,7 @@ BOOST_PYTHON_MODULE (liboofem)
     def("vtkxml", raw_function(vtkxml,0));
     if(import_mpi4py() >= 0){
 	def("setloggercomm", setloggercomm);
+        def("setglobalcomm", setglobalcomm);
     }
     else{
 	return;

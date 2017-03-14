@@ -545,6 +545,8 @@ public:
     virtual int giveCurrentNumberOfIterations() {return 1;}
 
 #ifdef __PARALLEL_MODE
+    /// Sets the communication object of receiver
+    void setParallelComm(MPI_Comm comm) {this->comm = comm;}
     /// Returns the communication object of reciever.
     MPI_Comm giveParallelComm() { return this->comm; }
     /**

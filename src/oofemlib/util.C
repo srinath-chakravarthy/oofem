@@ -42,7 +42,13 @@
 #include <cstring>
 
 namespace oofem {
-EngngModel *InstanciateProblem(DataReader *dr, problemMode mode, int contextFlag, EngngModel *_master, bool parallelFlag)
+#ifdef __PARALLEL_MODE    
+    MPI_Comm util_comm;
+    void Setutil_comm(MPI_Comm comm) {
+        util_comm = comm;
+    }
+#endif    
+    EngngModel *InstanciateProblem(DataReader *dr, problemMode mode, int contextFlag, EngngModel *_master, bool parallelFlag)
 {
     IRResultType result;                       // Required by IR_GIVE_FIELD macro
     EngngModel *problem;
@@ -66,7 +72,10 @@ EngngModel *InstanciateProblem(DataReader *dr, problemMode mode, int contextFlag
         OOFEM_WARNING( "Failed to construct engineering model of type \"%s\".\n", problemName.c_str() );
         return NULL;
     }
-
+#ifdef __PARALLEL_MODE
+    if (!(util_comm)) util_comm = MPI_COMM_WORLD;
+    problem->setParallelComm(util_comm);
+#endif
     problem->setProblemMode(mode);
     problem->setParallelMode(parallelFlag);
 

@@ -248,8 +248,10 @@ int main(int argc, char *argv[])
 
     // print header to redirected output
     OOFEM_LOG_FORCED(PRG_HEADER_SM);
-
     OOFEMTXTDataReader dr( inputFileName.str ( ).c_str() );
+#ifdef __PARALLEL_MODE    
+    Setutil_comm(MPI_COMM_WORLD);
+#endif    
     problem = :: InstanciateProblem(& dr, _processor, contextFlag, NULL, parallelFlag);
     dr.finish();
     if ( !problem ) {
