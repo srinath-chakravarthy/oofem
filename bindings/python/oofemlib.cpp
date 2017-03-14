@@ -101,6 +101,10 @@ namespace bp = boost::python;
 #include "Materials/structmatsettable.h"
 
 #include<iostream>
+#ifdef __PARALLEL_MODE
+#include <mpi.h>
+#include "/usr/local/lib/python2.7/dist-packages/mpi4py/include/mpi4py/mpi4py.h"
+#endif
 
 namespace oofem {
 
@@ -1807,9 +1811,15 @@ object CreateExportModuleOfType(const char* type, bp::tuple args, bp::dict kw)
 object vtkxml(bp::tuple args, bp::dict kw) { return CreateExportModuleOfType("vtkxml",args,kw); }
 
 
-
-
-
+#ifdef __PARALLEL_MODE
+static void setloggercomm(object py_comm)
+{
+    PyObject* py_obj = py_comm.ptr();
+    MPI_Comm *comm_p = PyMPIComm_Get(py_obj);
+    if (comm_p == NULL) throw_error_already_set();
+    oofem_logger.setComm(*comm_p);
+}
+#endif
 
 
 /*****************************************************
@@ -1936,5 +1946,11 @@ BOOST_PYTHON_MODULE (liboofem)
 
     def("exportModule", raw_function(exportModule,1));
     def("vtkxml", raw_function(vtkxml,0));
+    if(import_mpi4py() >= 0){
+	def("setloggercomm", setloggercomm);
+    }
+    else{
+	return;
+    }
 }
 } // end namespace oofem
