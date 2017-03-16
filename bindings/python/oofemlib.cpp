@@ -592,6 +592,7 @@ void pyclass_EngngModel()
 	.def("forceEquationNumbering", forceEquationNumbering_1)
 	.def("giveNumberOfMetaSteps",&EngngModel::giveNumberOfMetaSteps)
 	.def("RenumberEquations", &EngngModel::RenumberEquations)
+        .def("initializeCommMaps", &EngngModel::initializeCommMaps)
         ;
 }
 
