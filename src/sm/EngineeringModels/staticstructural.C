@@ -168,7 +168,7 @@ StaticStructural :: initializeFrom(InputRecord *ir)
     if ( isParallel() ) {
         delete communicator;
         delete commBuff;
-        commBuff = new CommunicatorBuff( this->giveNumberOfProcesses() );
+        commBuff = new CommunicatorBuff( this->giveNumberOfProcesses(), this->giveParallelComm() );
         communicator = new NodeCommunicator(this, commBuff, this->giveRank(),
                                             this->giveNumberOfProcesses());
 

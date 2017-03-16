@@ -241,7 +241,7 @@ Natural2GlobalOrdering :: init(EngngModel *emodel, int di, const UnknownNumberin
     // pack data for remote procs
     CommunicationBuffer **buffs = new CommunicationBuffer * [ nproc ];
     for ( int p = 0; p < nproc; p++ ) {
-        buffs [ p ] = new StaticCommunicationBuffer(MPI_COMM_WORLD, 0);
+        buffs [ p ] = new StaticCommunicationBuffer(emodel->giveParallelComm(), 0);
         buffs [ p ]->resize( buffs [ p ]->givePackSizeOfInt(1) * sizeToSend(p) );
 
 #if 0

@@ -282,7 +282,7 @@ HuertaErrorEstimator :: estimateError(EE_ErrorMode err_mode, TimeStep *tStep)
     buffer_out [ 2 ] = ( double ) nelems;
     buffer_out [ 3 ] = ( double ) skippedNelems;
 
-    MPI_Allreduce(buffer_out, buffer_in, 4, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    MPI_Allreduce(buffer_out, buffer_in, 4, MPI_DOUBLE, MPI_SUM, model->giveParallelComm());
 
     globalENorm = buffer_in [ 0 ];
     globalUNorm = buffer_in [ 1 ];
@@ -347,7 +347,7 @@ HuertaErrorEstimator :: estimateError(EE_ErrorMode err_mode, TimeStep *tStep)
 #ifdef __PARALLEL_MODE
  #ifdef __USE_MPI
             double myGlobalWENorm = globalWENorm;
-            MPI_Allreduce(& myGlobalWENorm, & globalWENorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+            MPI_Allreduce(& myGlobalWENorm, & globalWENorm, 1, MPI_DOUBLE, MPI_SUM, model->giveParallelComm());
  #endif
 #endif
 
@@ -471,7 +471,7 @@ HuertaErrorEstimator :: estimateError(EE_ErrorMode err_mode, TimeStep *tStep)
         buffer_out [ 2 ] = mixedNorm;
         buffer_out [ 3 ] = fineUNorm;
 
-        MPI_Allreduce(buffer_out, buffer_in, 4, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        MPI_Allreduce(buffer_out, buffer_in, 4, MPI_DOUBLE, MPI_SUM, model->giveParallelComm());
 
         exactENorm = buffer_in [ 0 ];
         coarseUNorm = buffer_in [ 1 ];

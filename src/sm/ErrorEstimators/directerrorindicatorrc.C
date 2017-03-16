@@ -211,7 +211,7 @@ DirectErrorIndicatorRC :: estimateMeshDensities(TimeStep *tStep)
 #ifdef __PARALLEL_MODE
     // exchange strategies between nodes to ensure consistency
     int myStrategy = this->currStrategy, globalStrategy;
-    MPI_Allreduce(& myStrategy, & globalStrategy, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(& myStrategy, & globalStrategy, 1, MPI_INT, MPI_MAX, d->giveEngngModel()->giveParallelComm());
     this->currStrategy = ( RemeshingStrategy ) globalStrategy;
 #endif
 
@@ -251,7 +251,7 @@ DirectErrorIndicatorRC :: initializeFrom(InputRecord *ir)
 
 #ifdef __PARALLEL_MODE
     EngngModel *emodel = domain->giveEngngModel();
-    commBuff = new CommunicatorBuff(emodel->giveNumberOfProcesses(), CBT_dynamic);
+    commBuff = new CommunicatorBuff(emodel->giveNumberOfProcesses(), CBT_dynamic,emodel->giveParallelComm());
     communicator = new NodeCommunicator(emodel, commBuff, emodel->giveRank(),
                                         emodel->giveNumberOfProcesses());
 #endif

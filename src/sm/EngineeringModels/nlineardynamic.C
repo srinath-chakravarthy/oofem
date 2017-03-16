@@ -172,7 +172,7 @@ NonLinearDynamic :: initializeFrom(InputRecord *ir)
 
 #ifdef __PARALLEL_MODE
     if ( isParallel() ) {
-        commBuff = new CommunicatorBuff(this->giveNumberOfProcesses(), CBT_static);
+        commBuff = new CommunicatorBuff(this->giveNumberOfProcesses(), CBT_static, this->giveParallelComm());
         communicator = new NodeCommunicator(this, commBuff, this->giveRank(),
                                             this->giveNumberOfProcesses());
 

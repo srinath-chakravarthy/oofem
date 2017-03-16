@@ -47,6 +47,10 @@
 
 #include <string>
 
+#ifdef __USE_MPI
+ #include <mpi.h>
+#endif
+
 namespace oofem {
 /**
  * The ProcessCommunicator and corresponding buffers (represented by this class)
@@ -70,7 +74,7 @@ protected:
     CommunicationBuffer *recv_buff;
 public:
     /// Constructor, creates empty send and receive com buffs in MPI_COMM_WORLD.
-    ProcessCommunicatorBuff(CommBuffType t);
+    ProcessCommunicatorBuff(CommBuffType t, MPI_Comm comm=MPI_COMM_WORLD);
     virtual ~ProcessCommunicatorBuff();
 
     virtual int givePackSizeOfInt(int count) { return send_buff->givePackSizeOfInt(count); }

@@ -107,7 +107,7 @@ LinearStatic :: initializeFrom(InputRecord *ir)
 
 #ifdef __PARALLEL_MODE
     if ( isParallel() ) {
-        commBuff = new CommunicatorBuff( this->giveNumberOfProcesses() );
+        commBuff = new CommunicatorBuff( this->giveNumberOfProcesses(),this->giveParallelComm() );
         communicator = new NodeCommunicator(this, commBuff, this->giveRank(),
                                             this->giveNumberOfProcesses());
     }

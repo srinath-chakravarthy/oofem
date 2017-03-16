@@ -101,7 +101,7 @@ NlDEIDynamic :: initializeFrom(InputRecord *ir)
     }
 
 #ifdef __PARALLEL_MODE
-    commBuff = new CommunicatorBuff( this->giveNumberOfProcesses() );
+    commBuff = new CommunicatorBuff( this->giveNumberOfProcesses() , this->giveParallelComm());
     communicator = new NodeCommunicator(this, commBuff, this->giveRank(),
                                         this->giveNumberOfProcesses());
 
@@ -249,7 +249,7 @@ void NlDEIDynamic :: solveYourselfAt(TimeStep *tStep)
             }
 
             // Sum up the contributions from processors.
-            MPI_Allreduce(& my_pMp, & pMp, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+            MPI_Allreduce(& my_pMp, & pMp, 1, MPI_DOUBLE, MPI_SUM, this->giveParallelComm());
 #else
             this->pMp = 0.0;
             for ( i = 1; i <= neq; i++ ) {
@@ -376,7 +376,7 @@ void NlDEIDynamic :: solveYourselfAt(TimeStep *tStep)
         }
 
         // Sum up the contributions from processors.
-        MPI_Allreduce(& my_pt, & pt, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        MPI_Allreduce(& my_pt, & pt, 1, MPI_DOUBLE, MPI_SUM, this->giveParallelComm());
 #else
         for ( k = 1; k <= neq; k++ ) {
             pt += internalForces.at(k) * loadRefVector.at(k) / massMatrix.at(k);
@@ -421,7 +421,7 @@ void NlDEIDynamic :: solveYourselfAt(TimeStep *tStep)
         }
 
         // Sum up the contributions from processors.
-        MPI_Allreduce(& my_err, & err, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        MPI_Allreduce(& my_err, & err, 1, MPI_DOUBLE, MPI_SUM, this->giveParallelComm());
 
 #else
         for ( k = 1; k <= neq; k++ ) {
@@ -656,7 +656,7 @@ NlDEIDynamic :: computeMassMtrx(FloatArray &massMatrix, double &maxOm, TimeStep 
     VERBOSEPARALLEL_PRINT( "NlDEIDynamic :: computeMassMtrx", "Reduce of maxOm started", this->giveRank() );
   #endif
 
-    int result = MPI_Allreduce(& maxOm, & globalMaxOm, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    int result = MPI_Allreduce(& maxOm, & globalMaxOm, 1, MPI_DOUBLE, MPI_MAX, this->giveParallelComm());
 
   #ifdef __VERBOSE_PARALLEL
     VERBOSEPARALLEL_PRINT( "NlDEIDynamic :: computeMassMtrx", "Reduce of maxOm finished", this->giveRank() );

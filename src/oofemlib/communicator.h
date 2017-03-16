@@ -64,9 +64,10 @@ protected:
     int size;
     /// Array of process communicators.
     ProcessCommunicatorBuff **processCommBuffs;
-
+    
 public:
-    CommunicatorBuff(int s, CommBuffType t = CBT_static);
+    CommunicatorBuff(int s, CommBuffType t = CBT_static, MPI_Comm comm = MPI_COMM_WORLD);
+    CommunicatorBuff(int s, MPI_Comm comm) : CommunicatorBuff(s, CBT_static, comm) {};
     ~CommunicatorBuff();
 
     /**

@@ -42,14 +42,13 @@
 #endif
 
 namespace oofem {
-CommunicatorBuff :: CommunicatorBuff(int s, CommBuffType t)
+CommunicatorBuff :: CommunicatorBuff(int s, CommBuffType t, MPI_Comm comm)
 {
     this->size = s;
-
     if ( size ) {
         processCommBuffs = new ProcessCommunicatorBuff * [ size ];
         for ( int i = 0; i < size; i++ ) {
-            processCommBuffs [ i ] = new ProcessCommunicatorBuff(t);
+            processCommBuffs [ i ] = new ProcessCommunicatorBuff(t, comm);
         }
     } else {
         processCommBuffs = NULL;

@@ -80,7 +80,7 @@ ParmetisLoadBalancer :: calculateLoadTransfer()
     int edgecut, wgtflag, ncon;
     real_t ubvec [ 1 ], itr;
     Element *ielem;
-    MPI_Comm communicator = MPI_COMM_WORLD;
+    MPI_Comm communicator = domain->giveEngngModel()->giveParallelComm();
     LoadBalancerMonitor *lbm = domain->giveEngngModel()->giveLoadBalancerMonitor();
 
     nproc = domain->giveEngngModel()->giveNumberOfProcesses();
@@ -271,7 +271,7 @@ ParmetisLoadBalancer :: initGlobalParmetisElementNumbering()
 
     procElementCounts(myrank) = nlocelem;
 
-    MPI_Allgather(& nlocelem, 1, MPI_INT, procElementCounts.givePointer(), 1, MPI_INT, MPI_COMM_WORLD);
+    MPI_Allgather(& nlocelem, 1, MPI_INT, procElementCounts.givePointer(), 1, MPI_INT, domain->giveEngngModel()->giveParallelComm());
     elmdist [ 0 ] = 0;
     for ( i = 0; i < nproc; i++ ) {
         elmdist [ i + 1 ] = elmdist [ i ] + procElementCounts(i);

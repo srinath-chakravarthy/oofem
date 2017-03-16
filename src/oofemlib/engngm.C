@@ -1820,7 +1820,7 @@ EngngModel :: initParallel()
  #ifdef __USE_MPI
     int len;
     MPI_Get_processor_name(processor_name, & len);
-    this->comm = MPI_COMM_WORLD;
+    //this->comm = MPI_COMM_WORLD;
     MPI_Comm_rank(this->comm, & this->rank);
     MPI_Comm_size(this->comm, & numProcs);
  #else

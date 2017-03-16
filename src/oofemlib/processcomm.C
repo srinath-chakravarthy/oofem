@@ -42,14 +42,14 @@
 #endif
 
 namespace oofem {
-ProcessCommunicatorBuff :: ProcessCommunicatorBuff(CommBuffType t)
+ProcessCommunicatorBuff :: ProcessCommunicatorBuff(CommBuffType t, MPI_Comm comm)
 {
     if ( t == CBT_static ) {
-        send_buff = new StaticCommunicationBuffer(MPI_COMM_WORLD);
-        recv_buff = new StaticCommunicationBuffer(MPI_COMM_WORLD);
+        send_buff = new StaticCommunicationBuffer(comm);
+        recv_buff = new StaticCommunicationBuffer(comm);
     } else {
-        send_buff = new DynamicCommunicationBuffer(MPI_COMM_WORLD);
-        recv_buff = new DynamicCommunicationBuffer(MPI_COMM_WORLD);
+        send_buff = new DynamicCommunicationBuffer(comm);
+        recv_buff = new DynamicCommunicationBuffer(comm);
     }
 }
 
