@@ -34,7 +34,7 @@
 
 #include "communicator.h"
 #include "intarray.h"
-
+#include "engngm.h"
 #include <cstdarg>
 
 #ifdef __USE_MPI
@@ -74,7 +74,8 @@ Communicator :: Communicator(EngngModel *emodel, CommunicatorBuff *b, int rank, 
     this->rank = rank;
     this->size = size;
     this->mode = m;
-
+    this->comm = emodel->giveParallelComm();
+    
     if ( size ) {
         processComms = new ProcessCommunicator * [ size ];
         for ( int i = 0; i < size; i++ ) {

@@ -109,6 +109,7 @@ int main(int argc, char *argv[])
 
     int rank = 0;
 
+
 #ifdef __PARALLEL_MODE
  #ifdef __USE_MPI
     MPI_Init(& argc, & argv);

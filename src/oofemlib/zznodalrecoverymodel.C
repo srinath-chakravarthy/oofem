@@ -285,7 +285,7 @@ ZZNodalRecoveryModel :: initCommMaps()
  #ifdef __PARALLEL_MODE
     if ( initCommMap ) {
         EngngModel *emodel = domain->giveEngngModel();
-        commBuff = new CommunicatorBuff(emodel->giveNumberOfProcesses(), CBT_dynamic);
+        commBuff = new CommunicatorBuff(emodel->giveNumberOfProcesses(), CBT_dynamic, emodel->giveParallelComm());
         communicator = new NodeCommunicator(emodel, commBuff, emodel->giveRank(),
                                             emodel->giveNumberOfProcesses());
         communicator->setUpCommunicationMaps(domain->giveEngngModel(), true, true);

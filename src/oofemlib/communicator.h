@@ -116,6 +116,8 @@ protected:
     EngngModel *engngModel;
     /// Mode.
     CommunicatorMode mode;
+    
+    MPI_Comm comm;
 
 public:
     /**
@@ -306,7 +308,7 @@ Communicator :: unpackAllData( T *ptr, int ( T :: *unpackFunc )( ProcessCommunic
     VERBOSEPARALLEL_PRINT("Communicator :: unpackAllData", "Synchronize barrier started", rank)
  #endif
 
-    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier(this->comm);
 
  #ifdef __VERBOSE_PARALLEL
     VERBOSEPARALLEL_PRINT("Communicator :: unpackAllData", "Synchronize barrier finished", rank)
@@ -421,7 +423,7 @@ Communicator :: unpackAllData( T *ptr, P *dest, int ( T :: *unpackFunc )( P *, P
     VERBOSEPARALLEL_PRINT("Communicator :: unpackAllData", "Synchronize barrier started", rank)
  #endif
 
-    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier(this->comm);
 
  #ifdef __VERBOSE_PARALLEL
     VERBOSEPARALLEL_PRINT("Communicator :: unpackAllData", "Synchronize barrier finished", rank)
