@@ -136,6 +136,7 @@ set (sm_emodel
     EngineeringModels/incrementallinearstatic.C
     EngineeringModels/freewarping.C 
     EngineeringModels/structuralmaterialevaluator.C
+    EngineeringModels/DDlinearstatic.C
     )
 
 set (sm_loads
