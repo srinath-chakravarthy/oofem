@@ -1,16 +1,30 @@
 #include "oofeminterface.h"
 #include "../domain.h"
-#include "point.h"
+#include "../point.h"
 #include "../vector.h"
 
+#include "../../oofemlib/engngm.h"
 #include "../../sm/EngineeringModels/DDlinearstatic.h"
-#include "spatiallocalizer.h"
-#include "element.h"
+#include "../../oofemlib/spatiallocalizer.h"
+#include "../../oofemlib/element.h"
 #include "../../oofemlib/domain.h"
-#include "gausspoint.h"
+#include "../../oofemlib/gausspoint.h"
+#include "../../oofemlib/material.h"
 #include "../../sm/Elements/structuralelement.h"
-#include "generalboundarycondition.h"
-#include "node.h"
+#include "../../oofemlib/generalboundarycondition.h"
+#include "../../sm/Materials/linearelasticmaterial.h"
+#include "../../sm/Materials/isolinearelasticmaterial.h"
+#include "../../oofemlib/manualboundarycondition.h"
+#include "../../oofemlib/node.h"
+#include "../../oofemlib/dof.h"
+#include "../../oofemlib/timestep.h"
+#include "../../oofemlib/node.h"
+#include "../../oofemlib/dofmanager.h"
+#include "../../oofemlib/floatarray.h"
+#include "../../oofemlib/dofiditem.h"
+#include "../../oofemlib/bctype.h"
+#include "../../oofemlib/logger.h"
+#include "../../oofemlib/error.h"
 
 
 namespace dd {
@@ -47,5 +61,54 @@ namespace dd {
             }
         }
     }
+    void OofemInterface::getMaterialProperties(){
+        oofem::Domain * domain = this->engModel->giveDomain(1);
+        // Check here to make sure we have linear Elastic properties only
+        int ddmatnum = 0;
+        for ( auto &mat : domain->giveMaterials() ) {
+            if (oofem::IsotropicLinearElasticMaterial * le = dynamic_cast<oofem::IsotropicLinearElasticMaterial *>(mat.get())){
+                ddmatnum ++;
+                if (ddmatnum > 1) {
+//                     OOFEM_ERROR("Can have only one DD material currently");
+                } else {
+                    Domain dddomain = Domain(le->giveYoungsModulus(), le->givePoissonsRatio(), this);
+                }
+                
+            }
+        }
+    }
+//     void OofemInterface::applyBoundaryCondition(){
+//         oofem::Domain *fem_domain = this->engModel->giveDomain(1);
+//         oofem::TimeStep *tStep = this->engModel->giveCurrentStep();
+//         
+//         /// Loop through all DofManagers
+//         for (auto &dofman : fem_domain->giveDofManagers()){
+//             for (int dofid =1; dofid<= dofman->giveNumberOfDofs()){
+//                 Dof *dof = dofman->giveDofWithID(dofid);
+//                 if (dof->hasBc(tStep)){
+//                     int bcid = dof->giveBcId();
+//                     
+//                     Node * node = static_cast<Node *>(dofman);
+//                     giveNodalBcContribution(node, bcContribution);
+//                     
+//                     GeneralBoundaryCondition * bc = fem_domain->giveBc(bcid);
+//                     ManualBoundaryCondition * manbc = dynamic_cast<ManualBoundaryCondition *>(fem_domain->giveBc(bcid));
+//                     if(manbc == nullptr || manbc->giveType() != DirichletBT) { continue; }
+//                     double toAdd;
+//                     if(dof->giveDofID() == D_u) {
+//                         toAdd = bcContribution[0];
+//                     }
+//                     else if(dof->giveDofID() == D_v) {
+//                         toAdd = bcContribution[1];
+//                     }
+//                     else {
+//                         OOFEM_ERROR("DOF must be x-disp or y-disp");
+//                     }
+//                     manbc->addManualValue(dof, toAdd);
+//                 }
+//             }
+//         }
+//     }
+
 
 }

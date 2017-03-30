@@ -90,10 +90,15 @@ DDLinearStatic :: DDLinearStatic(int i, EngngModel *_master) : StructuralEngngMo
     ndomains = 1;
     initFlag = 1;
     solverType = ST_Direct;
+    // This will create a new oofem DD_problem 
+       /// Which really should instanciate the interface
+    dd_interface = new dd::OofemInterface(this);
+};
+
+
+DDLinearStatic :: ~DDLinearStatic() { 
+    delete dd_interface;
 }
-
-
-DDLinearStatic :: ~DDLinearStatic() { }
 
 
 NumericalMethod *DDLinearStatic :: giveNumericalMethod(MetaStep *mStep)
@@ -146,6 +151,11 @@ DDLinearStatic :: initializeFrom(InputRecord *ir)
     return IRRT_OK;
 }
 
+ void DDLinearStatic::postInitialize(){
+     StructuralEngngModel :: postInitialize();
+     /// Now initialize all DD DD_domains with the respective material properties
+    dd_interface->getMaterialProperties();
+}
 
 double DDLinearStatic :: giveUnknownComponent(ValueModeType mode, TimeStep *tStep, Domain *d, Dof *dof)
 // returns unknown quantity like displacement, velocity of equation eq
@@ -221,42 +231,34 @@ void DDLinearStatic :: solveYourselfAt(TimeStep *tStep)
      * by perhaps creating an DD_interface class to do set of functions
      */
     /**************************************************************************/
-
-    int NumberOfDomains = this->giveNumberOfDomains();
-    // Loop through all the giveNumberOfDomains
-    for (int i = 1; i<= NumberOfDomains; i++) {
-        //Domain *domain = this->giveDomain(i);
         /// Create a spatial localizer which in effect has services for locating points in element etc.
-        //SpatialLocalizer *sl = domain->giveSpatialLocalizer();
         // Perform DD solution at this time step, solution will depend on quantities in the input file
         /// @todo these have to be defined and initialized earlier
         /// Each domain for the DD case can have only one material... throw error otherwise
         //// Also the DD_domains should be intialized with these materials properties during input
         //// Here i am just using values from input file for algorithmic convenience
         
-        dd::OofemInterface * interface = new dd::OofemInterface(this);
         
-        dd::Domain dd_domain(70e-3, 0.3, NULL);
+        dd:: Domain * dd_domain = dd_interface->getDomain();
         dd::SlipSystem ss0 = dd::SlipSystem(0.0, 0.25e-3);
-        dd_domain.addSlipSystem(&ss0);
+        dd_domain->addSlipSystem(&ss0);
 
-        dd::SlipPlane sp0 = dd::SlipPlane(&dd_domain, &ss0, 0.0);
+        dd::SlipPlane sp0 = dd::SlipPlane(dd_domain, &ss0, 0.0);
 
-        dd::ObstaclePoint o0 = dd::ObstaclePoint(&dd_domain, &sp0, -0.25, 20.0e3);
-        dd::ObstaclePoint o1 = dd::ObstaclePoint(&dd_domain, &sp0, 0.25, 20.0e3);
-        double e = dd_domain.getModulus();
-        double nu = dd_domain.getPassionsRatio();
+        dd::ObstaclePoint o0 = dd::ObstaclePoint(dd_domain, &sp0, -0.25, 20.0e3);
+        dd::ObstaclePoint o1 = dd::ObstaclePoint(dd_domain, &sp0, 0.25, 20.0e3);
+        double e = dd_domain->getModulus();
+        double nu = dd_domain->getPassionsRatio();
         double mu = e / (2. * ( 1. + nu));
         double fact = mu * ss0.getBurgersMagnitude() / ( 2 * M_PI * (1. - nu));
         
-        dd::SourcePoint s1 = dd::SourcePoint(&dd_domain, &sp0, 0, 25e-6, fact / 25e-6);
+        dd::SourcePoint s1 = dd::SourcePoint(dd_domain, &sp0, 0, 25e-6, fact / 25e-6);
         
-        for( dd_domain.dtNo = 1; dd_domain.dtNo < dd_domain.dtNomax; dd_domain.dtNo++) {
             std::cerr << "Total dislocs in domain: " << sp0.getContainer<dd::DislocationPoint>().size() << "\n";
             std::cerr << "Dislocs: " << sp0.dumpToString<dd::DislocationPoint>() << "\n";
             std::cerr.flush();
-            dd_domain.updateForceCaches();
-            for(auto point : dd_domain.getContainer<dd::DislocationPoint>()) {
+            dd_domain->updateForceCaches();
+            for(auto point : dd_domain->getContainer<dd::DislocationPoint>()) {
                 dd::Vector<2> force, forceGradient;
                 dd::Vector<3> stress;
                 force = dd::Vector<2>({0.0,0.0});
@@ -266,13 +268,44 @@ void DDLinearStatic :: solveYourselfAt(TimeStep *tStep)
                 stress = point->cachedStress();
                 std::cout << "Cached Force at " <<  point->slipPlanePosition() << ": " << point->getBurgersSign() << " " <<  force[0] << " " << stress[2] << " " << point->slipPlanePosition() << "\n";
             }
-            dd_domain.updateForceCaches();
-            dd_domain.moveDislocations(1.0e-11, 1.0e-16);
-            s1.spawn(1, 5);
+            dd_domain->updateForceCaches();
+            dd_domain->moveDislocations(1.0e-11, 1.0e-16);
+            s1.spawn(1, 5);      
+
+        Domain *fem_domain = this->giveDomain(1);
+        /// Loop through all DofManagers
+        for (auto &dofman : fem_domain->giveDofManagers()){
+            int nodenum = dofman->giveLabel();
+            dd::Vector<2> bcContribution;
+            for (int dofid =1; dofid<= dofman->giveNumberOfDofs(); dofid++){
+                Dof *dof = dofman->giveDofWithID(dofid);
+                if (dof->hasBc(this->giveCurrentStep())){
+                    int bcid = dof->giveBcId();
+                    
+                    Node * node = static_cast<Node *>(fem_domain->giveDofManager(nodenum));
+                    dd_interface->giveNodalBcContribution(node, bcContribution);
+                    
+                    GeneralBoundaryCondition * bc = fem_domain->giveBc(bcid);
+                    ManualBoundaryCondition * manbc = dynamic_cast<ManualBoundaryCondition *>(fem_domain->giveBc(bcid));
+                    if(manbc == nullptr || manbc->giveType() != DirichletBT) { continue; }
+                    double toAdd;
+                    if(dof->giveDofID() == D_u) {
+                        toAdd = bcContribution[0];
+                    }
+                    else if(dof->giveDofID() == D_v) {
+                        toAdd = bcContribution[1];
+                    }
+                    else {
+                        OOFEM_ERROR("DOF must be x-disp or y-disp");
+                    }
+                    manbc->addManualValue(dof, toAdd);
+                }
+            }
+        }        
             
-#if 1            
-            for(int bcNo = 1; bcNo <= giveDomain(i)->giveNumberOfBoundaryConditions(); bcNo++) {
-                ManualBoundaryCondition * bc = dynamic_cast<ManualBoundaryCondition *>(giveDomain(i)->giveBc(bcNo));
+#if 0
+            for(int bcNo = 1; bcNo <= giveDomain(1)->giveNumberOfBoundaryConditions(); bcNo++) {
+                ManualBoundaryCondition * bc = dynamic_cast<ManualBoundaryCondition *>(giveDomain(1)->giveBc(bcNo));
                 if(bc == nullptr || bc->giveType() != DirichletBT) { continue; }
 
                 dd::Vector<2> bcContribution;
@@ -285,7 +318,7 @@ void DDLinearStatic :: solveYourselfAt(TimeStep *tStep)
                     Node * node = static_cast<Node *>(d->giveDofManager(nodeNo));
                     for (auto &dofid : bc->giveDofIDs()) {
                         Dof * dof = node->giveDofWithID(dofid);
-                        interface->giveNodalBcContribution(node, bcContribution);
+                        dd_interface->giveNodalBcContribution(node, bcContribution);
                         // TODO: Determine the dimensions without pointer checking
                         double toAdd;
                         if(dof->giveDofID() == D_u) {
@@ -306,13 +339,7 @@ void DDLinearStatic :: solveYourselfAt(TimeStep *tStep)
                 std::cout << "BC Contribution: " << bcContribution[0] << " " << bcContribution[1] << "\n";
 
             }
-
-#endif            
-
-            //delete interface;
-        } // end dtNo loop
-    }
-
+#endif
 
 
 

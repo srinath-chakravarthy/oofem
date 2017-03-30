@@ -12,7 +12,7 @@ namespace dd {
     using list = std::list<T>;
 
     /**
-      * Base Java object for DD.
+      * Base C++ object for DD.
       */
     class DdObject {
 #define DDOBJECT_NAME "DdObject"

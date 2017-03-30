@@ -38,8 +38,18 @@
 #include "../sm/EngineeringModels/structengngmodel.h"
 #include "sparselinsystemnm.h"
 #include "sparsemtrxtype.h"
+#include "../dd/feminterface/oofeminterface.h"
+#include "../dd/ddobject.h"
+#include "../dd/domain.h"
+
+#include <map>
 
 #define _IFT_DDLinearStatic_Name "ddlinearstatic"
+
+namespace dd{
+    class OofemInterface;
+    class Domain;
+}
 
 namespace oofem {
 class SparseMtrx;
@@ -72,6 +82,8 @@ protected:
     std :: unique_ptr< SparseLinearSystemNM > nMethod;
 
     int initFlag;
+    dd::OofemInterface * dd_interface;
+    
 
 public:
     DDLinearStatic(int i, EngngModel * _master = NULL);
@@ -85,6 +97,8 @@ public:
     virtual contextIOResultType restoreContext(DataStream *stream, ContextMode mode, void *obj = NULL);
 
     virtual void updateDomainLinks();
+    
+    virtual void postInitialize();
 
     virtual TimeStep *giveNextStep();
     virtual NumericalMethod *giveNumericalMethod(MetaStep *mStep);
@@ -98,6 +112,7 @@ public:
     virtual fMode giveFormulation() { return TL; }
 
     virtual int estimateMaxPackSize(IntArray &commMap, DataStream &buff, int packUnpackType);
+    
 };
 } // end namespace oofem
 #endif // linearstatic_h
