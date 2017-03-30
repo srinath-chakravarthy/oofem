@@ -52,8 +52,8 @@
 #include "manualboundarycondition.h"
 
 #ifdef __PARALLEL_MODE
-#include "problemcomm.h"
-#include "communicator.h"
+ #include "problemcomm.h"
+ #include "communicator.h"
 #include <material.h>
 #endif
 
@@ -107,7 +107,7 @@ NumericalMethod *DDLinearStatic :: giveNumericalMethod(MetaStep *mStep)
             nMethod.reset( classFactory.createSparseLinSolver(solverType, this->giveDomain(1), this) );
         }
         if ( !nMethod ) {
-            OOFEM_ERROR("linear solver creation failed");
+            OOFEM_ERROR("linear solver creation failed for lstype %d", solverType);
         }
     }
 
@@ -135,7 +135,7 @@ DDLinearStatic :: initializeFrom(InputRecord *ir)
 
 #ifdef __PARALLEL_MODE
     if ( isParallel() ) {
-        commBuff = new CommunicatorBuff( this->giveNumberOfProcesses() );
+        commBuff = new CommunicatorBuff( this->giveNumberOfProcesses(),this->giveParallelComm() );
         communicator = new NodeCommunicator(this, commBuff, this->giveRank(),
                                             this->giveNumberOfProcesses());
     }
@@ -188,7 +188,7 @@ TimeStep *DDLinearStatic :: giveNextStep()
         currentStep.reset( new TimeStep(giveNumberOfTimeStepWhenIcApply(), this, 1, 0., 1., 0) );
     }
     previousStep = std :: move(currentStep);
-    currentStep.reset(new TimeStep(*previousStep, 1.) );
+    currentStep.reset( new TimeStep(*previousStep, 1.) );
 
     return currentStep.get();
 }
@@ -257,13 +257,13 @@ void DDLinearStatic :: solveYourselfAt(TimeStep *tStep)
             std::cerr.flush();
             dd_domain.updateForceCaches();
             for(auto point : dd_domain.getContainer<dd::DislocationPoint>()) {
-		dd::Vector<2> force, forceGradient;
-		dd::Vector<3> stress;
-		force = dd::Vector<2>({0.0,0.0});
-		
-		//point->sumCaches(force, forceGradient, stress);
-		force = point->cachedForce();
-		stress = point->cachedStress();
+                dd::Vector<2> force, forceGradient;
+                dd::Vector<3> stress;
+                force = dd::Vector<2>({0.0,0.0});
+                
+                //point->sumCaches(force, forceGradient, stress);
+                force = point->cachedForce();
+                stress = point->cachedStress();
                 std::cout << "Cached Force at " <<  point->slipPlanePosition() << ": " << point->getBurgersSign() << " " <<  force[0] << " " << stress[2] << " " << point->slipPlanePosition() << "\n";
             }
             dd_domain.updateForceCaches();
@@ -272,16 +272,16 @@ void DDLinearStatic :: solveYourselfAt(TimeStep *tStep)
             
 #if 1            
             for(int bcNo = 1; bcNo <= giveDomain(i)->giveNumberOfBoundaryConditions(); bcNo++) {
-            	ManualBoundaryCondition * bc = dynamic_cast<ManualBoundaryCondition *>(giveDomain(i)->giveBc(bcNo));
-            	if(bc == nullptr || bc->giveType() != DirichletBT) { continue; }
+                ManualBoundaryCondition * bc = dynamic_cast<ManualBoundaryCondition *>(giveDomain(i)->giveBc(bcNo));
+                if(bc == nullptr || bc->giveType() != DirichletBT) { continue; }
 
-            	dd::Vector<2> bcContribution;
+                dd::Vector<2> bcContribution;
 
-            	Domain * d = bc->giveDomain();
-            	Set * set = d->giveSet(bc->giveSetNumber());
+                Domain * d = bc->giveDomain();
+                Set * set = d->giveSet(bc->giveSetNumber());
 
 
-            	for(int nodeNo : set->giveNodeList()) {
+                for(int nodeNo : set->giveNodeList()) {
                     Node * node = static_cast<Node *>(d->giveDofManager(nodeNo));
                     for (auto &dofid : bc->giveDofIDs()) {
                         Dof * dof = node->giveDofWithID(dofid);
@@ -324,7 +324,6 @@ void DDLinearStatic :: solveYourselfAt(TimeStep *tStep)
     //
     // first assemble problem at current time step
 
-
     if ( initFlag ) {
 #ifdef VERBOSE
         OOFEM_LOG_DEBUG("Assembling stiffness matrix\n");
@@ -341,7 +340,7 @@ void DDLinearStatic :: solveYourselfAt(TimeStep *tStep)
         stiffnessMatrix->buildInternalStructure( this, 1, EModelDefaultEquationNumbering() );
 
         this->assemble( *stiffnessMatrix, tStep, TangentAssembler(TangentStiffness),
-                        EModelDefaultEquationNumbering(), this->giveDomain(1) );
+                       EModelDefaultEquationNumbering(), this->giveDomain(1) );
 
         initFlag = 0;
     }
@@ -362,7 +361,7 @@ void DDLinearStatic :: solveYourselfAt(TimeStep *tStep)
     loadVector.resize( this->giveNumberOfDomainEquations( 1, EModelDefaultEquationNumbering() ) );
     loadVector.zero();
     this->assembleVector( loadVector, tStep, ExternalForceAssembler(), VM_Total,
-                          EModelDefaultEquationNumbering(), this->giveDomain(1) );
+                         EModelDefaultEquationNumbering(), this->giveDomain(1) );
 
     //
     // internal forces (from Dirichlet b.c's, or thermal expansion, etc.)
@@ -370,7 +369,7 @@ void DDLinearStatic :: solveYourselfAt(TimeStep *tStep)
     FloatArray internalForces( this->giveNumberOfDomainEquations( 1, EModelDefaultEquationNumbering() ) );
     internalForces.zero();
     this->assembleVector( internalForces, tStep, InternalForceAssembler(), VM_Total,
-                          EModelDefaultEquationNumbering(), this->giveDomain(1) );
+                         EModelDefaultEquationNumbering(), this->giveDomain(1) );
 
     loadVector.subtract(internalForces);
 
