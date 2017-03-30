@@ -472,14 +472,6 @@ contextIOResultType DDLinearStatic :: restoreContext(DataStream *stream, Context
 }
 
 
-void
-DDLinearStatic :: terminate(TimeStep *tStep)
-{
-    StructuralEngngModel :: terminate(tStep);
-    this->printReactionForces(tStep, 1);
-    fflush( this->giveOutputStream() );
-}
-
 
 void
 DDLinearStatic :: updateDomainLinks()

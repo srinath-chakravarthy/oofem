@@ -88,7 +88,7 @@ public:
 
     virtual TimeStep *giveNextStep();
     virtual NumericalMethod *giveNumericalMethod(MetaStep *mStep);
-    virtual void terminate(TimeStep *tStep);
+//     virtual void terminate(TimeStep *tStep);
 
     virtual IRResultType initializeFrom(InputRecord *ir);
 
