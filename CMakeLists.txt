@@ -61,6 +61,7 @@ set (ELIXIR_DIR CACHE PATH "Manual Elixir directory (OOFEG only)")
 set (CKIT_DIR CACHE PATH "Manual CKit directory (OOFEG only)")
 set (METIS_DIR CACHE PATH "Manual Metis directory (Load balancing)")
 set (PARMETIS_DIR CACHE PATH "Manual ParMetis directory (Load balancing)")
+set (LAMMPS_DIR CACHE PATH "Manual Lammps directory (lammps coupling)")
 #set (BOOST_DIR CACHE PATH "Manual Boost directory")
 
 #######################################################################
@@ -100,6 +101,13 @@ option (USE_CEMHYD "Enable CemHyd support" OFF)
 #option (USE_BOOST "Enable Boost" OFF)
 option (USE_PYTHON_BINDINGS "Enable Python bidings (OOFEM usable from Python). Implies USE_PYTHON." OFF)
 option (USE_PYTHON "Enable Python to be used inside OOFEM (e.g. userdef Dirichlet BCs)" OFF)
+
+# lammps and coupling stuff
+option(USE_LAMMPS "Enable lammps coupling" OFF)
+if (USE_LAMMPS)
+  add_defintions(-D__LAMMPS)
+  set (USE_MPI ON)
+ endif ()
 
 if (USE_PARALLEL)
     add_definitions (-D__PARALLEL_MODE)
@@ -276,6 +284,20 @@ if (USE_VTK)
     list (APPEND EXT_LIBS ${VTK_LIBRARIES})
     list (APPEND MODULE_LIST "VTK")
 endif ()
+
+if (USE_LAMMPS)
+  # ---- lammps is currently completely manual
+  if (LAMMPS_DIR)
+    find_library(LAMMPS_LIB lammps PATH "${LAMMPS_DIR}/src")
+    include_directories("${LAMMPS_DIR}/src")
+  endif()
+  if (${LAMMPS_LIB} STREQUAL "LAMMPS_LIB-NOTFOUND")
+    message(FATAL_ERROR "Lammps library not found")
+  endif()
+  list (APPEND EXT_LIBS ${LAMMPS_LIB})
+  list (APPED MODULE_LIST "lammps")
+  set (USE_MPI ON)
+endif()
 
 if (USE_PARMETIS)
     if (PARMETIS_DIR)
@@ -472,7 +494,10 @@ if (USE_PYTHON_BINDINGS OR USE_PYTHON)
         list (APPEND EXT_LIBS ${Boost_LIBRARIES})
         add_definitions(-DBOOST_PYTHON)
     #endif ()
-endif ()
+  endif ()
+
+
+    
 
 
 #######################################################################
@@ -604,7 +629,23 @@ if (USE_OOFEG)
         target_link_libraries (oofeg ${EXT_LIBS})
     endif ()
     install(TARGETS oofeg DESTINATION bin)
-endif ()
+  endif ()
+
+  if (USE_LAMMPS)
+    #  OOLAMMPS target:
+    if (USE_SHARED_LIB)
+      add_executable (oofem_lammps ${oofem_SOURCE_DIR}/src/main/oolammps.C)
+      target_link_libraries (oolammps liboofem)
+    elseif (${CMAKE_VERSION} VERSION_LESS "2.8.8") # Hackish backwards compatibility
+      add_executable (oolammps ${oofem_SOURCE_DIR}/src/main/oolammps.C)
+      target_link_libraries (oolammps ${LIBS} ${EXT_LIBS})
+    else ()
+      add_executable (oolammps ${oofem_SOURCE_DIR}/src/main/oolammps.C ${LIBS})
+      target_link_libraries (oolammps ${EXT_LIBS})
+    endif ()
+    install(TARGETS oolammps DESTINATION bin)
+  endif ()
+  
 
 # Example of using liboofem with dynamic input record:
 add_executable(beam01 ${oofem_SOURCE_DIR}/bindings/oofemlib/beam01.C)
