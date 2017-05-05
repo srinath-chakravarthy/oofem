@@ -1,7 +1,7 @@
 #ifndef MANY2ONE_H
 #define MANY2ONE_H
 
-#include <mpi.h>
+#include "mpi.h"
 
 class Many2One {
  public:
@@ -10,12 +10,11 @@ class Many2One {
 
   void setup(int, int *, int);
   void gather(double *, int, double *);
-  void 
 
  protected:
   int me,nprocs;
   MPI_Comm comm;
-  class Memory *memory;
+  class comm_Memory *memory;
 
   
   int root; 

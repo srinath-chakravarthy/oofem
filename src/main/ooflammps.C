@@ -91,6 +91,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <vector>
 
 #include "classfactory.h"
 

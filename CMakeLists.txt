@@ -201,7 +201,7 @@ if (USE_LAMMPS)
   list (APPEND MODULE_LIST "lammps")
   set (USE_MPI ON)
 
- include_directories("${oofem_SOURCE_DIR}/src/main/comm_library")
+ include_directories("${oofem_SOURCE_DIR}/src/comm_library")
   if (${CMAKE_VERSION} VERSION_LESS "2.8.8")
     list (APPEND EXT_LIBS comm_library)
   else ()
@@ -572,7 +572,11 @@ endif ()
 set (oofempy)
 if (USE_PYTHON_BINDINGS)
     set (oofempy ${oofem_SOURCE_DIR}/bindings/python/oofemlib.cpp)
-endif ()
+  endif ()
+
+  if (USE_LAMMPS)
+    add_subdirectory("${oofem_SOURCE_DIR}/src/main/comm_library")
+  endif()
 
 # Main targets
 if (USE_SHARED_LIB)
@@ -617,6 +621,12 @@ if (USE_SHARED_LIB)
         endif ()
     endif()
 
+    if (USE_LAMMPS)
+      set_target_properties (comm_library PROPERTIES COMPILE_DEFINITIONS "liboofem_EXPORTS")
+      if (NOT "${LIBOOFEM_EXPORT_CFLAGS}" STREQUAL "")
+            set_target_properties (comm_library PROPERTIES COMPILE_FLAGS ${LIBOOFEM_EXPORT_CFLAGS})
+          endif ()      
+    endif()
     generate_export_header (liboofem
         BASE_NAME OOFEM
         )

@@ -20,7 +20,7 @@ Many2One::Many2One(MPI_Comm caller_comm, int rootproc,int lleader, int rleader)
 
   
   memory = new comm_Memory(comm);
-  int size, nremote; 
+  int size; 
   if (MPI_Comm_remote_size(comm, &size) > 1){
     gatheryes = 1;
     if (me == 0) {
