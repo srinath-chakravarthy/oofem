@@ -1,4 +1,4 @@
-#include "mpi.h"
+#include <mpi.h>
 #include "stdio.h"
 #include "stdlib.h"
 #include "many2one.h"
@@ -16,12 +16,13 @@ Many2One::Many2One(MPI_Comm caller_comm, int rootproc,int lleader, int rleader)
   MPI_Comm_test_inter(comm, &flag);
   intercomm = flag;
   MPI_Comm_rank(comm,&me);
-  MPI_Comm_size(comm,&nprocs);
+  
 
   
   memory = new comm_Memory(comm);
   int size; 
   if (MPI_Comm_remote_size(comm, &size) > 1){
+    nprocs = size;
     gatheryes = 1;
     if (me == 0) {
         counts = new int[nprocs];
@@ -72,7 +73,7 @@ void Many2One::setup(int nsrc_in, int *id, int ndest)
   idall = NULL;
   if (me == 0)
     idall = (int *) memory->smalloc(nall*sizeof(int),"many2one:idall");
-  MPI_Gatherv(id,nsrc,MPI_INT,idall,counts,displs,MPI_INT,0,comm);
+  MPI_Gatherv(id,nsrc,MPI_INT,idall,counts,displs,MPI_INT,root,comm);
 }
 
 /* ---------------------------------------------------------------------- */

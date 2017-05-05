@@ -94,6 +94,7 @@
 #include <vector>
 
 #include "classfactory.h"
+#include "../comm_library/many2one.h"
 
 using namespace oofem;
 
@@ -132,6 +133,7 @@ int main(int argc, char *argv[])
     int world_size;
     int color; 
     int level;
+    int rootproc;
     struct Fem_interface{
         std::map<int, int> bcMap;  // Map from bc number to node number
         int num_pad_atoms;         // Number of pad atoms
@@ -309,17 +311,19 @@ int main(int argc, char *argv[])
             color = 0;
             local_leader = 0;
             remote_leader = 1;
+            rootproc = MPI_ROOT;
         } else {
             color = 1;
             local_leader = 0;
             remote_leader = 0;
+            rootproc = remote_leader;
         }
         MPI_Comm_split(comm, color, 0, &split);
         MPI_Intercomm_create(split, local_leader, comm, remote_leader, 99, &intercomm);
     } else {
         split = MPI_COMM_WORLD;
     }
-    
+    Many2One *lmp_fem = new Many2One(intercomm, rootproc, local_leader, remote_leader);
 // Declare variables ??
     
     MPI_Comm_rank(split, &myrank);

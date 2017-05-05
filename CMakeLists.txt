@@ -190,7 +190,6 @@ if (USE_LAMMPS)
   # ---- lammps is currently completely manual
   if (LAMMPS_DIR)
     find_library(LAMMPS_LIB lammps PATH "${LAMMPS_DIR}/src")
-    include_directories("${LAMMPS_DIR}/src")
   else()
     find_library(LAMMPS_LIB lammps)
   endif()
@@ -200,13 +199,14 @@ if (USE_LAMMPS)
   list (APPEND EXT_LIBS ${LAMMPS_LIB})
   list (APPEND MODULE_LIST "lammps")
   set (USE_MPI ON)
-
- include_directories("${oofem_SOURCE_DIR}/src/comm_library")
   if (${CMAKE_VERSION} VERSION_LESS "2.8.8")
-    list (APPEND EXT_LIBS comm_library)
+    list (APPEND LIBS clibrary)
   else ()
-   list (APPEND EXT_LIBS $<TARGET_OBJECTS:comm_library>)
-  endif ()
+   list (APPEND LIBS $<TARGET_OBJECTS:clibrary>)
+ endif ()
+  include_directories("${oofem_SOURCE_DIR}/src/clibrary")
+ 
+ include_directories("${LAMMPS_DIR}/src")
 
 endif()
 
@@ -568,15 +568,16 @@ if (USE_TM)
 endif ()
 if (USE_FM)
     add_subdirectory ("${oofem_SOURCE_DIR}/src/fm")
-endif ()
+  endif ()
+  if (USE_LAMMPS)
+    add_subdirectory("${oofem_SOURCE_DIR}/src/clibrary")
+  endif()
+
 set (oofempy)
 if (USE_PYTHON_BINDINGS)
     set (oofempy ${oofem_SOURCE_DIR}/bindings/python/oofemlib.cpp)
   endif ()
 
-  if (USE_LAMMPS)
-    add_subdirectory("${oofem_SOURCE_DIR}/src/main/comm_library")
-  endif()
 
 # Main targets
 if (USE_SHARED_LIB)
@@ -585,7 +586,7 @@ if (USE_SHARED_LIB)
         ${oofempy}
         ${LIBS} 
         )
-    target_link_libraries (liboofem ${EXT_LIBS})
+      target_link_libraries (liboofem ${EXT_LIBS})
     set_target_properties (liboofem PROPERTIES OUTPUT_NAME oofem)
     if (NOT "${LIBOOFEM_EXPORT_CFLAGS}" STREQUAL "")
         set_target_properties (liboofem PROPERTIES COMPILE_FLAGS ${LIBOOFEM_EXPORT_CFLAGS})
@@ -622,9 +623,9 @@ if (USE_SHARED_LIB)
     endif()
 
     if (USE_LAMMPS)
-      set_target_properties (comm_library PROPERTIES COMPILE_DEFINITIONS "liboofem_EXPORTS")
+      set_target_properties (clibrary PROPERTIES COMPILE_DEFINITIONS "liboofem_EXPORTS")
       if (NOT "${LIBOOFEM_EXPORT_CFLAGS}" STREQUAL "")
-            set_target_properties (comm_library PROPERTIES COMPILE_FLAGS ${LIBOOFEM_EXPORT_CFLAGS})
+            set_target_properties (clibrary PROPERTIES COMPILE_FLAGS ${LIBOOFEM_EXPORT_CFLAGS})
           endif ()      
     endif()
     generate_export_header (liboofem
@@ -634,46 +635,46 @@ endif ()
 
 # OOFEM target
 if (USE_SHARED_LIB) # Prefer dynamic lib if available.
-    add_executable (oofem ${oofem_SOURCE_DIR}/src/main/main.C)
-    target_link_libraries (oofem liboofem)
+  add_executable (oofem ${oofem_SOURCE_DIR}/src/main/main.C)
+  target_link_libraries (oofem liboofem)
 elseif (${CMAKE_VERSION} VERSION_LESS "2.8.8") # Hackish backwards compatibility 
-    add_executable (oofem ${oofem_SOURCE_DIR}/src/main/main.C)
-    target_link_libraries (oofem ${LIBS} ${EXT_LIBS})
+  add_executable (oofem ${oofem_SOURCE_DIR}/src/main/main.C)
+  target_link_libraries (oofem ${LIBS} ${EXT_LIBS})
 else ()
-    add_executable (oofem ${oofem_SOURCE_DIR}/src/main/main.C ${LIBS})
-    target_link_libraries (oofem ${EXT_LIBS})
+  add_executable (oofem ${oofem_SOURCE_DIR}/src/main/main.C ${LIBS})
+  target_link_libraries (oofem ${EXT_LIBS})
 endif ()
 install (TARGETS oofem DESTINATION bin)
 
 if (USE_OOFEG)
-    #  OOFEG target:
-    if (USE_SHARED_LIB)
-        add_executable (oofeg ${oofem_SOURCE_DIR}/src/main/oofeg.C)
-        target_link_libraries (oofeg liboofem)
-    elseif (${CMAKE_VERSION} VERSION_LESS "2.8.8") # Hackish backwards compatibility
-        add_executable (oofeg ${oofem_SOURCE_DIR}/src/main/oofeg.C)
-        target_link_libraries (oofeg ${LIBS} ${EXT_LIBS})
-    else ()
-        add_executable (oofeg ${oofem_SOURCE_DIR}/src/main/oofeg.C ${LIBS})
-        target_link_libraries (oofeg ${EXT_LIBS})
-    endif ()
-    install(TARGETS oofeg DESTINATION bin)
+  #  OOFEG target:
+  if (USE_SHARED_LIB)
+    add_executable (oofeg ${oofem_SOURCE_DIR}/src/main/oofeg.C)
+    target_link_libraries (oofeg liboofem)
+  elseif (${CMAKE_VERSION} VERSION_LESS "2.8.8") # Hackish backwards compatibility
+    add_executable (oofeg ${oofem_SOURCE_DIR}/src/main/oofeg.C)
+    target_link_libraries (oofeg ${LIBS} ${EXT_LIBS})
+  else ()
+    add_executable (oofeg ${oofem_SOURCE_DIR}/src/main/oofeg.C ${LIBS})
+    target_link_libraries (oofeg ${EXT_LIBS})
   endif ()
+  install(TARGETS oofeg DESTINATION bin)
+endif ()
 
-  if (USE_LAMMPS)
-    #  OOLAMMPS target:
-    if (USE_SHARED_LIB)
-      add_executable (oofem_lammps ${oofem_SOURCE_DIR}/src/main/ooflammps.C)
-      target_link_libraries (oofem_lammps liboofem)
-    elseif (${CMAKE_VERSION} VERSION_LESS "2.8.8") # Hackish backwards compatibility
-      add_executable (oofem_lammps ${oofem_SOURCE_DIR}/src/main/ooflammps.C)
-      target_link_libraries (oofem_lammps ${LIBS} ${EXT_LIBS})
-    else ()
-      add_executable (oolammps ${oofem_SOURCE_DIR}/src/main/ooflammps.C ${LIBS})
-      target_link_libraries (oolammps ${EXT_LIBS})
-    endif ()
-    install(TARGETS oofem_lammps DESTINATION bin)
+if (USE_LAMMPS)
+  #  OOLAMMPS target:
+  if (USE_SHARED_LIB)
+    add_executable (oofem_lammps ${oofem_SOURCE_DIR}/src/main/ooflammps.C)
+    target_link_libraries (oofem_lammps liboofem)
+  elseif (${CMAKE_VERSION} VERSION_LESS "2.8.8") # Hackish backwards compatibility
+    add_executable (oofem_lammps ${oofem_SOURCE_DIR}/src/main/ooflammps.C)
+    target_link_libraries (oofem_lammps ${LIBS} ${EXT_LIBS} ${LAMMPS_LIBS})
+  else ()
+    add_executable (oolammps ${oofem_SOURCE_DIR}/src/main/ooflammps.C ${LIBS})
+    target_link_libraries (oofem_lammps ${EXT_LIBS} ${LAMMPS_LIBS})
   endif ()
+  install(TARGETS oofem_lammps DESTINATION bin)
+endif ()
   
 
 # Example of using liboofem with dynamic input record:
