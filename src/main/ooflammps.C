@@ -48,6 +48,13 @@
 #include "logger.h"
 #include "contextioerr.h"
 #include "oofem_terminate.h"
+#include "domain.h"
+#include "boundarycondition.h"
+#include "generalboundarycondition.h"
+#include "manualboundarycondition.h"
+#include "dof.h"
+#include "dofmanager.h"
+
 
 #ifdef __PARALLEL_MODE
  #include "dyncombuff.h"
@@ -65,8 +72,9 @@
  #include "oofeggraphiccontext.h"
 #endif
 
-#ifdef __LAMMPS_MODULE
+#ifdef __LAMMPS
   #include "lammps.h"
+#define LAMMPS_NS LAMMPS_NS
   #include "library.h"
   #include "input.h"
   #include "modify.h"
@@ -82,6 +90,7 @@
 // For passing PETSc/SLEPc arguments.
 #include <fstream>
 #include <iterator>
+#include <map>
 
 #include "classfactory.h"
 
@@ -113,7 +122,7 @@ int main(int argc, char *argv[])
     bool parallelFlag = true, renumberFlag = false, debugFlag = false, contextFlag = false, restartFlag = false,
          inputFileFlag = false, outputFileFlag = false, errOutputFileFlag = false, lammps_inputFileFlag = false;
     std :: stringstream inputFileName, outputFileName, errOutputFileName, lammps_input_file;
-    int n_lammps_iter, n_fem_update, n_lammps_procs;
+    int n_lammps_iter =0, n_fem_update =0 , n_lammps_procs=0;
     std :: vector< const char * >modulesArgs;
     EngngModel *problem = 0;
     
@@ -121,13 +130,24 @@ int main(int argc, char *argv[])
     int rank = 0;
     int world_size;
     int color; 
-
+    int level;
+    struct Fem_interface{
+        std::map<int, int> bcMap;  // Map from bc number to node number
+        int num_pad_atoms;         // Number of pad atoms
+        int num_interface_atoms;   // Number of interface atoms = num manualboundarycondition
+        std::vector<FloatArray> pad_atom_coords; 
+        std::vector<int> pad_elem_map;
+        std::vector<int> pad_atom_ids;
+        std::vector<int> interface_atom_ids;
+    };
+    Fem_interface fem_interface;
+    
 #ifdef __PARALLEL_MODE
  #ifdef __USE_MPI
     MPI_Init(& argc, & argv);
     MPI_Comm comm = MPI_COMM_WORLD;
     MPI_Comm_rank(comm, & rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
     MPI_Comm split, intercomm; 
     int local_leader, remote_leader;
     
@@ -146,17 +166,9 @@ int main(int argc, char *argv[])
         // argv[0] is not read by PETSc and SLEPc.
         modulesArgs.push_back(argv [ 0 ]);
         for ( int i = 1; i < argc; i++ ) {
+//             fprintf(stderr, "\n Arguments %d %d %s \a\n\n", argc, i, argv[i]);
             if ( ( strcmp(argv [ i ], "-context") == 0 ) || ( strcmp(argv [ i ], "-c") == 0 ) ) {
                 contextFlag = true;
-            } else if ( strcmp(argv [ i ], "-v") == 0 ) {
-                if ( rank == 0 ) {
-                    oofem_print_version();
-                }
-
-                if ( argc == 2 ) {
-                    MPI_Finalize();
-                    exit(EXIT_SUCCESS);     // exit if only "-v" option
-                }
             } else if ( strcmp(argv [ i ], "-f") == 0 ) {
                 if ( i + 1 < argc ) {
                     i++;
@@ -180,8 +192,7 @@ int main(int argc, char *argv[])
             } else if ( strcmp(argv [ i ], "-l") == 0 ) {
                 if ( i + 1 < argc ) {
                     i++;
-                    int level = strtol(argv [ i ], NULL, 10);
-                    oofem_logger.setLogLevel(level);
+                    level = strtol(argv [ i ], NULL, 10);
                 }
             } else if ( strcmp(argv [ i ], "-qe") == 0 ) {
                 if ( i + 1 < argc ) {
@@ -196,26 +207,29 @@ int main(int argc, char *argv[])
                     outputFileFlag = true;
                     outputFileName << argv [ i ];
                 }
-            } else if ( strcmp(argv [ i ], "-d") == 0 ) {
-                debugFlag = true;
-            } else if (strcmp (argv [i], "-c") == 0) {
+            } else if ( strcmp(argv [ i ], "-s") == 0 ) {
+//                 fprintf(stderr, "\n Lammps %d %d \a\n\n", i+4, argc);
                 if (i + 4 < argc ) {
                     i++; 
-                    lammps_inputFileFlag = true;
                     lammps_input_file << argv [i];
+                    lammps_inputFileFlag = true;
+//                     fprintf(stderr, "\n Lammps %s \a\n\n", lammps_input_file.str().c_str());
                     i++;
-                    n_lammps_iter = strtol(argv [ i ], NULL, 10)
+                    n_lammps_iter = strtol(argv [ i ], NULL, 10);
+//                     fprintf(stderr, "\n Lammps %d \a\n\n", n_lammps_iter);
                     i++;
-                    n_fem_update = strtol(argv [ i ], NULL, 10)
+                    n_fem_update = strtol(argv [ i ], NULL, 10);
+//                     fprintf(stderr, "\n Lammps %d \a\n\n", n_fem_update);
                     i++;
-                    n_lammps_procs = strtol(argv [ i ], NULL, 10)
-                    i++;
+                    n_lammps_procs = strtol(argv [ i ], NULL, 10);
+//                     fprintf(stderr, "\n Lammps %d \a\n\n", n_lammps_procs);
                 } else {
                     fprintf(stderr, "\nNeed atleast 4 arguments after -c Couple flag \a\n\n");
                     exit(EXIT_FAILURE);
                 }
-            }
-            else { // Arguments not handled by OOFEM is to be passed to PETSc
+            } else if ( strcmp(argv [ i ], "-d") == 0 ) {
+                debugFlag = true;
+            } else { // Arguments not handled by OOFEM is to be passed to PETSc
                 modulesArgs.push_back(argv [ i ]);
             }
         }
@@ -236,13 +250,13 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
     // Check if lammps input file is given 
-    if (!lammps_inputFileFlag) {
-        if (rank == 0){
-            fprintf(stderr, "\nLammps Input file not specified\a\n\n");
-        }
-        MPI_Finalize();
-        exit(EXIT_FAILURE);        
-    }
+//     if (!lammps_inputFileFlag) {
+//         if (rank == 0){
+//             fprintf(stderr, "\nLammps Input file not specified\a\n\n");
+//         }
+//         MPI_Finalize();
+//         exit(EXIT_FAILURE);        
+//     }
     // Check if number of lammps procs is less than total number of procs
     // Check if lammps procs is even
     
@@ -252,9 +266,9 @@ int main(int argc, char *argv[])
     } else if (n_lammps_procs != world_size -1){
         proccheck = false;
         if (rank == 0) {
-            fprintf(stderr, "\nNumber of lammps processors has to be = total -1\a\n\n");
+            fprintf(stderr, "\nNumber of lammps processors has to be = total -1 %d\a\n\n", n_lammps_procs);
         }
-    } else if (n_lammps_proc % 2 != 0) {
+    } else if (n_lammps_procs % 2 != 0) {
         proccheck = false;
         if (rank == 0) {
             fprintf(stderr, "\nNumber of lammps processors has to be an even number\a\n\n");
@@ -262,8 +276,8 @@ int main(int argc, char *argv[])
     }
     // Now Finalize MPI for the above error
     if (!proccheck) {
-        MPI_Finalize()
-        exit(EXIT_FAILURE)
+        MPI_Finalize();
+        exit(EXIT_FAILURE);
     }
     
 #if defined ( __PETSC_MODULE ) || defined ( __SLEPC_MODULE )
@@ -272,8 +286,9 @@ int main(int argc, char *argv[])
 #endif
 
 #ifdef __PETSC_MODULE
-    PetscInitialize(& modulesArgc, & modulesArgv, PETSC_NULL, PETSC_NULL);
+            PetscInitialize(& modulesArgc, & modulesArgv, PETSC_NULL, PETSC_NULL);
 #endif
+
 
 #ifdef __SLEPC_MODULE
     SlepcInitialize(& modulesArgc, & modulesArgv, PETSC_NULL, PETSC_NULL);
@@ -285,7 +300,9 @@ int main(int argc, char *argv[])
     PyRun_SimpleString("import sys");
     PyRun_SimpleString("sys.path.append(\".\")");
 #endif
-
+    // Add variables for broadcast
+    int root, myrank;
+    
     if (world_size > 1){
         if (rank < 1){
             color = 0;
@@ -302,82 +319,68 @@ int main(int argc, char *argv[])
         split = MPI_COMM_WORLD;
     }
     
-#ifdef __PARALLEL_MODE
-    if ( parallelFlag ) {
-        inputFileName << "." << rank;
-        outputFileName << "." << rank;
-        errOutputFileName << "." << rank;
-    }
-#endif
-    if ( outputFileFlag ) {
-        oofem_logger.appendLogTo( outputFileName.str() );
-    }
-    if ( errOutputFileFlag ) {
-        oofem_logger.appendErrorTo( errOutputFileName.str() );
-    }
-
-    // print header to redirected output
-    OOFEM_LOG_FORCED(PRG_HEADER_SM);
-    OOFEMTXTDataReader dr( inputFileName.str ( ).c_str() );
-#ifdef __PARALLEL_MODE    
-    Setutil_comm(MPI_COMM_WORLD);
-#endif    
-    problem = :: InstanciateProblem(& dr, _processor, contextFlag, NULL, parallelFlag);
-    dr.finish();
-    if ( !problem ) {
-        OOFEM_LOG_ERROR("Couldn't instanciate problem, exiting");
-        exit(EXIT_FAILURE);
-    }
-
-    problem->checkProblemConsistency();
-    problem->init();
-
-    if ( renumberFlag ) {
-        problem->setRenumberFlag();
-    }
-
-    if ( restartFlag ) {
-        try {
-            problem->restoreContext(NULL, CM_State, ( void * ) restartStepInfo);
-        } catch(ContextIOERR & c) {
-            c.print();
-            exit(1);
+// Declare variables ??
+    
+    MPI_Comm_rank(split, &myrank);
+    if (world_size == 1){
+        
+    } else {
+        if (color == 0){
+            
+            fprintf(stderr, "\nStarting solution \a\n\n");
+            oofem_logger.setComm(split);
+            oofem_logger.setLogLevel(level);
+            OOFEM_LOG_FORCED(PRG_HEADER_SM);
+            OOFEMTXTDataReader dr( inputFileName.str ( ).c_str() );
+            Setutil_comm(split);
+            problem = :: InstanciateProblem(& dr, _processor, contextFlag, NULL, parallelFlag);
+            dr.finish();
+            if ( !problem ) {
+                OOFEM_LOG_ERROR("Couldn't instanciate problem, exiting");
+                exit(EXIT_FAILURE);
+            }           
+            problem->checkProblemConsistency();
+            problem->init();
+            problem->postInitialize();
+            
+            
+            Domain *domain = problem->giveDomain(1);
+            auto numDofman = domain->giveNumberOfDofManagers();
+            for (int i=1; i<=numDofman; i++){
+                auto dofman = domain->giveDofManager(i);
+                auto nodenum = dofman->giveLabel();
+                auto numdofs = dofman->giveNumberOfDofs();
+                for (int idf = 1; idf <= numdofs; idf++){
+                    auto dof = dofman->giveDofWithID(idf);
+                    if (dof->hasBc(problem->giveCurrentStep())){
+                        if(dof->giveBcId()){
+                            fem_interface.bcMap[nodenum] = dof->giveBcId();
+//                             OOFEM_LOG_INFO("Boundary Condition map %d %d\n",nodenum, dof->giveBcId());
+                        }
+                    }
+                }
+            }
+//             return 0;
+        } else {
+            LAMMPS_NS::LAMMPS *lmp = new LAMMPS_NS::LAMMPS(0,NULL,split);
+            lmp->input->file(lammps_input_file.str().c_str());
         }
-        problem->initStepIncrements();
-    } else if ( adaptiveRestartFlag ) {
-        problem->initializeAdaptive(adaptiveRestartFlag);
-        problem->saveContext(NULL, CM_State);
-        // exit (1);
+        
     }
-
-    if ( debugFlag ) {
-        oofem_debug(problem);
+    if (world_size > 1){
+        if (color == 0){
+            
+        }
     }
-
-
-    try {
-        problem->solveYourself();
-    } catch(OOFEM_Terminate & c) {
-        delete problem;
-
-        oofem_finalize_modules();
-
-        return 1;
-    }
-
-    problem->terminateAnalysis();
-#ifdef __PARALLEL_MODE
-    if ( parallelFlag ) {
-        DynamicCommunicationBuffer :: printInfo();
-    }
+    
+    MPI_Finalize();
+#ifdef __SLEPC_MODULE
+    SlepcFinalize();
 #endif
-    oofem_logger.printStatistics();
-    delete problem;
-
-    oofem_finalize_modules();
-
-    return 0;
+    
 }
+
+
 
 void oofem_print_help()
 {
@@ -419,13 +422,13 @@ void oofem_finalize_modules()
     PetscFinalize();
 #endif
 
-#ifdef __SLEPC_MODULE
-    SlepcFinalize();
-#endif
+// #ifdef __SLEPC_MODULE
+//     SlepcFinalize();
+// #endif
 
-#ifdef __USE_MPI
-    MPI_Finalize();
-#endif
+// #ifdef __USE_MPI
+//     MPI_Finalize();
+// #endif
 
 #ifdef __PYTHON_MODULE
     Py_Finalize();

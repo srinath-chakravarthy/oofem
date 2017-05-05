@@ -74,6 +74,7 @@ else ()
     set (USE_SHARED_LIB OFF)
 endif ()
 
+
 # Parallel stuff
 option (USE_PARALLEL "Enable parallel support" OFF)
 option (USE_METIS "Enable metis support" OFF)
@@ -105,9 +106,15 @@ option (USE_PYTHON "Enable Python to be used inside OOFEM (e.g. userdef Dirichle
 # lammps and coupling stuff
 option(USE_LAMMPS "Enable lammps coupling" OFF)
 if (USE_LAMMPS)
-  add_defintions(-D__LAMMPS)
+  add_definitions(-D__LAMMPS)
   set (USE_MPI ON)
  endif ()
+
+ if (${CMAKE_VERSION} VERSION_GREATER "2.8.7") # Compability with older version of cmake
+    option (USE_SHARED_LIB "Build shared library" ON)
+else ()
+    set (USE_SHARED_LIB OFF)
+endif ()
 
 if (USE_PARALLEL)
     add_definitions (-D__PARALLEL_MODE)
@@ -178,6 +185,31 @@ if (USE_SM)
 #     endif ()
     
 endif ()
+
+if (USE_LAMMPS)
+  # ---- lammps is currently completely manual
+  if (LAMMPS_DIR)
+    find_library(LAMMPS_LIB lammps PATH "${LAMMPS_DIR}/src")
+    include_directories("${LAMMPS_DIR}/src")
+  else()
+    find_library(LAMMPS_LIB lammps)
+  endif()
+  if (${LAMMPS_LIB} STREQUAL "LAMMPS_LIB-NOTFOUND")
+    message(FATAL_ERROR "Lammps library not found")
+  endif()
+  list (APPEND EXT_LIBS ${LAMMPS_LIB})
+  list (APPEND MODULE_LIST "lammps")
+  set (USE_MPI ON)
+
+ include_directories("${oofem_SOURCE_DIR}/src/main/comm_library")
+  if (${CMAKE_VERSION} VERSION_LESS "2.8.8")
+    list (APPEND EXT_LIBS comm_library)
+  else ()
+   list (APPEND EXT_LIBS $<TARGET_OBJECTS:comm_library>)
+  endif ()
+
+endif()
+
 
 if (USE_DD)
     include_directories ("${oofem_SOURCE_DIR}/src/dd")
@@ -285,19 +317,6 @@ if (USE_VTK)
     list (APPEND MODULE_LIST "VTK")
 endif ()
 
-if (USE_LAMMPS)
-  # ---- lammps is currently completely manual
-  if (LAMMPS_DIR)
-    find_library(LAMMPS_LIB lammps PATH "${LAMMPS_DIR}/src")
-    include_directories("${LAMMPS_DIR}/src")
-  endif()
-  if (${LAMMPS_LIB} STREQUAL "LAMMPS_LIB-NOTFOUND")
-    message(FATAL_ERROR "Lammps library not found")
-  endif()
-  list (APPEND EXT_LIBS ${LAMMPS_LIB})
-  list (APPED MODULE_LIST "lammps")
-  set (USE_MPI ON)
-endif()
 
 if (USE_PARMETIS)
     if (PARMETIS_DIR)
@@ -634,16 +653,16 @@ if (USE_OOFEG)
   if (USE_LAMMPS)
     #  OOLAMMPS target:
     if (USE_SHARED_LIB)
-      add_executable (oofem_lammps ${oofem_SOURCE_DIR}/src/main/oolammps.C)
-      target_link_libraries (oolammps liboofem)
+      add_executable (oofem_lammps ${oofem_SOURCE_DIR}/src/main/ooflammps.C)
+      target_link_libraries (oofem_lammps liboofem)
     elseif (${CMAKE_VERSION} VERSION_LESS "2.8.8") # Hackish backwards compatibility
-      add_executable (oolammps ${oofem_SOURCE_DIR}/src/main/oolammps.C)
-      target_link_libraries (oolammps ${LIBS} ${EXT_LIBS})
+      add_executable (oofem_lammps ${oofem_SOURCE_DIR}/src/main/ooflammps.C)
+      target_link_libraries (oofem_lammps ${LIBS} ${EXT_LIBS})
     else ()
-      add_executable (oolammps ${oofem_SOURCE_DIR}/src/main/oolammps.C ${LIBS})
+      add_executable (oolammps ${oofem_SOURCE_DIR}/src/main/ooflammps.C ${LIBS})
       target_link_libraries (oolammps ${EXT_LIBS})
     endif ()
-    install(TARGETS oolammps DESTINATION bin)
+    install(TARGETS oofem_lammps DESTINATION bin)
   endif ()
   
 

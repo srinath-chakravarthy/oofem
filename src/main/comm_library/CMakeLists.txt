@@ -3,4 +3,4 @@ set (comm_library
   comm_error.C
   many2one.C
   )
-add_library(comm_library ${comm_library})
+add_library(comm_library ${LIB_TYPE} ${comm_library})
